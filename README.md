@@ -21,7 +21,7 @@ You end up writing boilerplate to convert from `[]Product` to this struct for ev
 
 ## Solution
 
-Annotate your query with `-- @bulk update` and this plugin generates the adapter for you:
+Annotate your query with `-- @bulk` and this plugin generates the adapter for you:
 
 ```go
 // Plugin generates this (default style: function)
@@ -120,12 +120,15 @@ This produces `bulk.go` alongside sqlc's normal output.
 
 ## Features
 
-- Single `-- @bulk` annotation for all bulk operations (UPDATE, upsert, INSERT)
+- Single `-- @bulk` annotation — plugin auto-detects UPDATE vs INSERT/Upsert
 - Supports both `$N` and `@param_name` parameter syntax
 - Full-column queries reuse sqlc's model struct (e.g. `[]Product`)
 - Partial-column queries get a dedicated `XxxItem` struct
 - Three generation styles via `style` option (see below)
 - Handles nullable columns (`pgtype.*` ↔ base type conversion)
+- Custom PostgreSQL enum types mapped automatically
+- `:many` with single-column `RETURNING` (e.g. `RETURNING id`)
+- Function wrappers like `NULLIF(UNNEST(...), ...)` work transparently
 
 ## Generation Styles
 
@@ -150,14 +153,19 @@ Control how the adapter is generated with the `style` option:
 | `timestamp` | `pgtype.Timestamp` | `pgtype.Timestamp` |
 | `float4` | `float32` | `pgtype.Float4` |
 | `float8` | `float64` | `pgtype.Float8` |
+| `date` | `pgtype.Date` | `pgtype.Date` |
+| Custom enums | `EnumName` | `NullEnumName` |
 
 ## What about bulk INSERT?
 
-For pure bulk INSERT (without `ON CONFLICT`), you don't need this plugin. Use sqlc's built-in [`:copyfrom`](https://docs.sqlc.dev/en/stable/howto/insert.html#using-copyfrom) command, which generates a row-oriented adapter using PostgreSQL's `COPY` protocol directly.
+For pure bulk INSERT (without `ON CONFLICT` or `RETURNING`), you don't need this plugin. Use sqlc's built-in [`:copyfrom`](https://docs.sqlc.dev/en/stable/howto/insert.html#using-copyfrom) command, which generates a row-oriented adapter using PostgreSQL's `COPY` protocol directly.
+
+If your INSERT needs `RETURNING` (e.g. `RETURNING id`), `:copyfrom` doesn't support that — use this plugin with `-- @bulk` instead.
 
 ## Limitations
 
 - PostgreSQL + pgx/v5 only
+- `:many` with multiple `RETURNING` columns not yet supported (single column works)
 - Assumes default sqlc settings (`rename`, `overrides`, `emit_pointers_for_null_types` not yet supported)
 - Process plugin only (no WASM)
 
