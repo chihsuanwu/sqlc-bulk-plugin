@@ -474,6 +474,156 @@ ON CONFLICT (id) DO UPDATE SET price = EXCLUDED.price`,
 	}
 }
 
+// TestGenerateUpsertNullif tests that NULLIF(UNNEST(...)) is correctly parsed.
+func TestGenerateUpsertNullif(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "bus_stop"},
+						Columns: []*plugin.Column{
+							{Name: "city_id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int2"}},
+							{Name: "stop_uid", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+							{Name: "stop_id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "name", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+							{Name: "name_en", NotNull: false, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+							{Name: "station_id", NotNull: false, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkUpsertStop",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk upsert"},
+				Text: `INSERT INTO bus_stop (city_id, stop_uid, stop_id, name, name_en, station_id)
+VALUES (
+    UNNEST($1::smallint[]),
+    UNNEST($2::text[]),
+    UNNEST($3::integer[]),
+    UNNEST($4::text[]),
+    UNNEST($5::text[]),
+    NULLIF(UNNEST($6::text[]), '')
+)
+ON CONFLICT (stop_uid) DO UPDATE SET
+    stop_id    = EXCLUDED.stop_id,
+    name       = EXCLUDED.name,
+    name_en    = EXCLUDED.name_en,
+    station_id = EXCLUDED.station_id`,
+				InsertIntoTable: &plugin.Identifier{Name: "bus_stop"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int2", true),
+					makeParam(2, "", "text", true),
+					makeParam(3, "", "int4", true),
+					makeParam(4, "", "text", true),
+					makeParam(5, "", "text", true),
+					makeParam(6, "", "text", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+	if len(resp.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(resp.Files))
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Full column match → model struct reuse
+	if !strings.Contains(got, "items []BusStop") {
+		t.Errorf("expected model struct reuse ([]BusStop), got:\n%s", got)
+	}
+	// name_en is nullable → pgtype.Text conversion
+	if !strings.Contains(got, "item.NameEn.String") {
+		t.Errorf("expected nullable conversion for name_en, got:\n%s", got)
+	}
+	// station_id is nullable → pgtype.Text conversion
+	if !strings.Contains(got, "item.StationID.String") {
+		t.Errorf("expected nullable conversion for station_id, got:\n%s", got)
+	}
+	// Should have 6 params
+	if !strings.Contains(got, "Column6") {
+		t.Errorf("expected Column6 for NULLIF-wrapped param, got:\n%s", got)
+	}
+}
+
+// TestGenerateUpdateNullif tests that NULLIF in SET clause (not wrapping UNNEST) doesn't affect parsing.
+func TestGenerateUpdateNullif(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "trains"},
+						Columns: []*plugin.Column{
+							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "note_id", NotNull: false, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkUpdateTrains",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk update"},
+				Text: `UPDATE trains AS t SET
+    note_id = NULLIF(u.note_id, 0)
+FROM (
+    SELECT
+        UNNEST($1::int[]) AS id,
+        UNNEST($2::int[]) AS note_id
+) AS u
+WHERE t.id = u.id`,
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					makeParam(2, "", "int4", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Full column match → model struct
+	if !strings.Contains(got, "items []Train") {
+		t.Errorf("expected model struct reuse ([]Train), got:\n%s", got)
+	}
+	// note_id is nullable → pgtype.Int4
+	if !strings.Contains(got, "item.NoteID.Int32") {
+		t.Errorf("expected nullable conversion for note_id, got:\n%s", got)
+	}
+}
+
 // TestGenerateUpsertMissingInsertIntoTable tests error when InsertIntoTable is not set.
 func TestGenerateUpsertMissingInsertIntoTable(t *testing.T) {
 	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})

@@ -151,11 +151,14 @@ Control how the adapter is generated with the `style` option:
 | `float4` | `float32` | `pgtype.Float4` |
 | `float8` | `float64` | `pgtype.Float8` |
 
+## What about bulk INSERT?
+
+For pure bulk INSERT (without `ON CONFLICT`), you don't need this plugin. Use sqlc's built-in [`:copyfrom`](https://docs.sqlc.dev/en/stable/howto/insert.html#using-copyfrom) command, which generates a row-oriented adapter using PostgreSQL's `COPY` protocol directly.
+
 ## Limitations
 
 - PostgreSQL + pgx/v5 only
 - Upsert only supports `VALUES (UNNEST(...))` format (not `SELECT * FROM UNNEST(...)`)
-- `NULLIF(UNNEST(...))` and other function wrappers around UNNEST are not supported
 - Assumes default sqlc settings (`rename`, `overrides`, `emit_pointers_for_null_types` not yet supported)
 - Process plugin only (no WASM)
 
