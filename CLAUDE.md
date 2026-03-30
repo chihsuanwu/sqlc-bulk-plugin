@@ -38,5 +38,6 @@ go test -update .
 
 - UNNEST alias parsing always runs (even with `@param` syntax) because `column.name` is the param name, not the table column name. See SPEC.md FR-7.
 - Nullable is determined from Catalog, never from `Query.Params[].column.not_null` (always true for UNNEST).
+- Three generation styles (`function`/`method`/`interface`) controlled by `style` option. Default is `function` (standalone function accepting `Querier`). See SPEC.md FR-6.
 - Phase 1 assumes default sqlc settings (no rename/overrides support).
 - See SPEC.md for full design rationale and spike results.

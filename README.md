@@ -24,8 +24,8 @@ You end up writing boilerplate to convert from `[]Product` to this struct for ev
 Annotate your query with `-- @bulk update` and this plugin generates the adapter for you:
 
 ```go
-// Plugin generates this
-func (q *Queries) BulkUpdateProductsBatch(ctx context.Context, items []Product) error {
+// Plugin generates this (default style: function)
+func BulkUpdateProductsBatch(ctx context.Context, q Querier, items []Product) error {
     params := BulkUpdateProductsParams{
         Column1: make([]int32, len(items)),
         Column2: make([]string, len(items)),
@@ -70,6 +70,7 @@ sql:
         out: gen            # Must match gen.go.out
         options:
           package: db       # Must match gen.go.package
+          style: function   # "function" (default) | "method" | "interface"
 ```
 
 ### 3. Annotate queries
@@ -106,8 +107,18 @@ This produces `bulk_update.go` alongside sqlc's normal output.
 - Supports both `$N` and `@param_name` parameter syntax
 - Full-column queries reuse sqlc's model struct (e.g. `[]Product`)
 - Partial-column queries get a dedicated `XxxItem` struct
-- Generates `BulkQuerier` interface for mocking
+- Three generation styles via `style` option (see below)
 - Handles nullable columns (`pgtype.*` ↔ base type conversion)
+
+## Generation Styles
+
+Control how the adapter is generated with the `style` option:
+
+| `style` | Generates | Best for |
+|---|---|---|
+| `function` (default) | Standalone function: `BulkXxxBatch(ctx, q, items)` | Projects using `Querier` interface (`emit_interface: true`) |
+| `method` | Method on `*Queries`: `q.BulkXxxBatch(ctx, items)` | Projects using `*Queries` directly |
+| `interface` | Method + `BulkQuerier` interface (embeds `Querier`) | Projects willing to adopt a combined interface |
 
 ## Supported Types
 
