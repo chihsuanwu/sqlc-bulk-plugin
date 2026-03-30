@@ -71,6 +71,21 @@ func pgTypeToParamsElemType(pgType string) string {
 	return pgTypeToBaseGoType(pgType)
 }
 
+// isCustomType returns true if the type schema indicates a non-built-in type (e.g. custom enum).
+func isCustomType(schema string) bool {
+	return schema != "" && schema != "pg_catalog"
+}
+
+// customGoType returns the Go type for a custom type (e.g. enum).
+// sqlc generates PascalCase type alias for enums, and Null+PascalCase for nullable.
+func customGoType(pgType string, nullable bool) string {
+	name := pascalCase(pgType)
+	if nullable {
+		return "Null" + name
+	}
+	return name
+}
+
 // conversionExpr returns the expression to convert from Item struct field to Params element.
 // fieldAccess is like "item.Category".
 func conversionExpr(fieldAccess, fromType, toType string) string {
@@ -80,6 +95,10 @@ func conversionExpr(fieldAccess, fromType, toType string) string {
 	accessor, ok := pgtypeAccessor[fromType]
 	if ok {
 		return fieldAccess + accessor
+	}
+	// Nullable custom type (e.g. NullCancelledSourceEnum → CancelledSourceEnum)
+	if fromType == "Null"+toType {
+		return fieldAccess + "." + toType
 	}
 	return fmt.Sprintf("/* TODO: convert %s -> %s */ %s", fromType, toType, fieldAccess)
 }

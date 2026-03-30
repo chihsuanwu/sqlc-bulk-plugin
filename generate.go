@@ -146,12 +146,20 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 		}
 
 		pgType := ""
+		pgTypeSchema := ""
 		if p.Column != nil && p.Column.Type != nil {
 			pgType = p.Column.Type.Name
+			pgTypeSchema = p.Column.Type.Schema
 		}
 
-		goType := pgTypeToGoType(pgType, nullable)
-		paramsElem := pgTypeToParamsElemType(pgType)
+		var goType, paramsElem string
+		if isCustomType(pgTypeSchema) {
+			goType = customGoType(pgType, nullable)
+			paramsElem = pascalCase(pgType)
+		} else {
+			goType = pgTypeToGoType(pgType, nullable)
+			paramsElem = pgTypeToParamsElemType(pgType)
+		}
 		itemField := pascalCase(alias)
 
 		pf := paramsFieldName(p)

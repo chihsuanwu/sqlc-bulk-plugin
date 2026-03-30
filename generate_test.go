@@ -624,6 +624,157 @@ WHERE t.id = u.id`,
 	}
 }
 
+// TestGenerateCustomEnum tests custom enum type mapping (NOT NULL).
+func TestGenerateCustomEnum(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "tra_cancelled"},
+						Columns: []*plugin.Column{
+							{Name: "train_id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "station", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+							{Name: "source", NotNull: true, Type: &plugin.Identifier{Schema: "public", Name: "cancelled_source_enum"}},
+							{Name: "recorded_at", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "timestamptz"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkUpsertTRACancelled",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk upsert"},
+				Text: `INSERT INTO tra_cancelled (train_id, station, source, recorded_at)
+SELECT
+    UNNEST($1::int4[]),
+    UNNEST($2::text[]),
+    UNNEST($3::cancelled_source_enum[]),
+    UNNEST($4::timestamptz[])
+ON CONFLICT (train_id, station) DO UPDATE
+SET source = EXCLUDED.source`,
+				InsertIntoTable: &plugin.Identifier{Name: "tra_cancelled"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					makeParam(2, "", "text", true),
+					{
+						Number: 3,
+						Column: &plugin.Column{
+							NotNull: true,
+							IsArray: true,
+							Type:    &plugin.Identifier{Schema: "public", Name: "cancelled_source_enum"},
+						},
+					},
+					makeParam(4, "", "timestamptz", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Full column match → model struct
+	if !strings.Contains(got, "items []TraCancelled") {
+		t.Errorf("expected model struct reuse, got:\n%s", got)
+	}
+	// Enum field should use CancelledSourceEnum type
+	if !strings.Contains(got, "CancelledSourceEnum") {
+		t.Errorf("expected CancelledSourceEnum type, got:\n%s", got)
+	}
+	// NOT NULL enum — no conversion needed (same type)
+	if strings.Contains(got, "TODO: convert") {
+		t.Errorf("unexpected TODO conversion, got:\n%s", got)
+	}
+}
+
+// TestGenerateCustomEnumNullable tests nullable custom enum type mapping.
+func TestGenerateCustomEnumNullable(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "events"},
+						Columns: []*plugin.Column{
+							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "status", NotNull: false, Type: &plugin.Identifier{Schema: "public", Name: "event_status"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkUpdateEvents",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk update"},
+				Text: `UPDATE events AS e SET
+    status = u.status
+FROM (
+    SELECT
+        UNNEST($1::int[]) AS id,
+        UNNEST($2::event_status[]) AS status
+) AS u
+WHERE e.id = u.id`,
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					{
+						Number: 2,
+						Column: &plugin.Column{
+							NotNull: true,
+							IsArray: true,
+							Type:    &plugin.Identifier{Schema: "public", Name: "event_status"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Full column match → model struct (NullEventStatus lives in models.go, not here)
+	if !strings.Contains(got, "items []Event") {
+		t.Errorf("expected model struct reuse, got:\n%s", got)
+	}
+	// Params element type should be EventStatus (not Null)
+	if !strings.Contains(got, "[]EventStatus") {
+		t.Errorf("expected []EventStatus params type, got:\n%s", got)
+	}
+	// Conversion: item.Status.EventStatus (NullEventStatus → EventStatus)
+	if !strings.Contains(got, "item.Status.EventStatus") {
+		t.Errorf("expected .EventStatus accessor for nullable enum conversion, got:\n%s", got)
+	}
+}
+
 // TestGenerateUpsertSelectUNNEST tests SELECT UNNEST format (no VALUES clause).
 func TestGenerateUpsertSelectUNNEST(t *testing.T) {
 	catalog := &plugin.Catalog{
