@@ -986,6 +986,170 @@ ON CONFLICT (id) DO UPDATE SET price = EXCLUDED.price`,
 	}
 }
 
+// TestGenerateManyReturning tests :many with single-column RETURNING.
+func TestGenerateManyReturning(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "trains"},
+						Columns: []*plugin.Column{
+							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "train_no", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+							{Name: "direction", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int2"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkInsertTrains",
+				Cmd:      ":many",
+				Comments: []string{"@bulk"},
+				Text: `INSERT INTO trains (train_no, direction)
+VALUES (
+    UNNEST($1::text[]),
+    UNNEST($2::smallint[])
+)
+RETURNING id`,
+				InsertIntoTable: &plugin.Identifier{Name: "trains"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "text", true),
+					makeParam(2, "", "int2", true),
+				},
+				Columns: []*plugin.Column{
+					{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+	if len(resp.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(resp.Files))
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Return type should be ([]int32, error)
+	if !strings.Contains(got, "([]int32, error)") {
+		t.Errorf("expected ([]int32, error) return type, got:\n%s", got)
+	}
+	// Partial columns (train_no, direction — not id) → Item struct
+	if !strings.Contains(got, "BulkInsertTrainsItem") {
+		t.Errorf("expected Item struct, got:\n%s", got)
+	}
+}
+
+// TestGenerateManyReturningMethod tests :many with method style.
+func TestGenerateManyReturningMethod(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "items"},
+						Columns: []*plugin.Column{
+							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int8"}},
+							{Name: "name", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleInterface})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkInsertItems",
+				Cmd:      ":many",
+				Comments: []string{"@bulk"},
+				Text: `INSERT INTO items (name)
+VALUES (UNNEST($1::text[]))
+RETURNING id`,
+				InsertIntoTable: &plugin.Identifier{Name: "items"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "text", true),
+				},
+				Columns: []*plugin.Column{
+					{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int8"}},
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Return type in interface should also be ([]int64, error)
+	if !strings.Contains(got, "([]int64, error)") {
+		t.Errorf("expected ([]int64, error) return type, got:\n%s", got)
+	}
+	// BulkQuerier interface should include the method
+	if !strings.Contains(got, "BulkQuerier") {
+		t.Errorf("expected BulkQuerier interface, got:\n%s", got)
+	}
+}
+
+// TestGenerateManyMultiColumnError tests that :many with multiple RETURNING columns errors.
+func TestGenerateManyMultiColumnError(t *testing.T) {
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       buildTestCatalog(),
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkInsertReturningMulti",
+				Cmd:      ":many",
+				Comments: []string{"@bulk"},
+				Text: `INSERT INTO products (name, price)
+VALUES (UNNEST($1::text[]), UNNEST($2::int[]))
+RETURNING id, name`,
+				InsertIntoTable: &plugin.Identifier{Name: "products"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "text", true),
+					makeParam(2, "", "int4", true),
+				},
+				Columns: []*plugin.Column{
+					{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+					{Name: "name", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+				},
+			},
+		},
+	}
+
+	_, err := generate(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for multi-column RETURNING, got nil")
+	}
+	if !strings.Contains(err.Error(), "multiple RETURNING columns") {
+		t.Errorf("error should mention multiple RETURNING columns, got: %v", err)
+	}
+}
+
 // TestGenerateNoPgtype tests that pgtype import is omitted when no fields need it.
 func TestGenerateNoPgtype(t *testing.T) {
 	catalog := &plugin.Catalog{

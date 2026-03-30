@@ -18,6 +18,7 @@ type bulkQuery struct {
 	UseModelStruct bool
 	ParamsStruct   string
 	Fields         []bulkField
+	ReturnType     string // empty for :exec, e.g. "[]int32" for :many with single-column RETURNING
 }
 
 type bulkField struct {
@@ -193,6 +194,11 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 
 	useModel := isFullColumnMatch(colMap, paramColumnNames)
 
+	returnType, err := resolveReturnType(q)
+	if err != nil {
+		return bulkQuery{}, err
+	}
+
 	return bulkQuery{
 		QueryName:      q.Name,
 		FuncName:       q.Name + "Batch",
@@ -202,7 +208,33 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 		UseModelStruct: useModel,
 		ParamsStruct:   q.Name + "Params",
 		Fields:         fields,
+		ReturnType:     returnType,
 	}, nil
+}
+
+// resolveReturnType determines the return type for the adapter function.
+// Returns empty string for :exec, "[]GoType" for :many with single-column RETURNING.
+func resolveReturnType(q *plugin.Query) (string, error) {
+	if q.Cmd != ":many" {
+		return "", nil
+	}
+	if len(q.Columns) == 0 {
+		return "", fmt.Errorf(":many query has no RETURNING columns")
+	}
+	if len(q.Columns) > 1 {
+		return "", fmt.Errorf(":many with multiple RETURNING columns not yet supported (got %d columns)", len(q.Columns))
+	}
+	col := q.Columns[0]
+	if col.Type == nil {
+		return "", fmt.Errorf(":many RETURNING column has no type information")
+	}
+	var goType string
+	if isCustomType(col.Type.Schema) {
+		goType = customGoType(col.Type.Name, !col.NotNull)
+	} else {
+		goType = pgTypeToGoType(col.Type.Name, !col.NotNull)
+	}
+	return "[]" + goType, nil
 }
 
 // needsPgtype returns true if any query uses pgtype.* types.
