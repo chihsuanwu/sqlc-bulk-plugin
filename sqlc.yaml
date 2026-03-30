@@ -12,6 +12,7 @@ sql:
         package: db
         out: gen
         sql_package: pgx/v5
+        emit_interface: true
     codegen:
       - plugin: bulk
         out: gen
