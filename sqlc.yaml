@@ -15,3 +15,5 @@ sql:
     codegen:
       - plugin: bulk
         out: gen
+        options:
+          package: db
