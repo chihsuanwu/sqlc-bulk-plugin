@@ -19,3 +19,16 @@ jobs:
       - run: go vet ./...
 
       - run: go test -v ./...
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0
+
+      - run: go test -tags e2e -v -run TestE2E .
