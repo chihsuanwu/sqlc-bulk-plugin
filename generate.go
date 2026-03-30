@@ -154,14 +154,12 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 		}
 
 		pgType := ""
-		pgTypeSchema := ""
 		if p.Column != nil && p.Column.Type != nil {
 			pgType = p.Column.Type.Name
-			pgTypeSchema = p.Column.Type.Schema
 		}
 
 		var goType, paramsElem string
-		if isCustomType(pgTypeSchema) {
+		if isCustomType(pgType) {
 			goType = customGoType(pgType, nullable)
 			paramsElem = pascalCase(pgType)
 		} else {
@@ -229,7 +227,7 @@ func resolveReturnType(q *plugin.Query) (string, error) {
 		return "", fmt.Errorf(":many RETURNING column has no type information")
 	}
 	var goType string
-	if isCustomType(col.Type.Schema) {
+	if isCustomType(col.Type.Name) {
 		goType = customGoType(col.Type.Name, !col.NotNull)
 	} else {
 		goType = pgTypeToGoType(col.Type.Name, !col.NotNull)

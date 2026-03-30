@@ -71,9 +71,11 @@ func pgTypeToParamsElemType(pgType string) string {
 	return pgTypeToBaseGoType(pgType)
 }
 
-// isCustomType returns true if the type schema indicates a non-built-in type (e.g. custom enum).
-func isCustomType(schema string) bool {
-	return schema != "" && schema != "pg_catalog"
+// isCustomType returns true if the type is not a known built-in PostgreSQL type.
+// sqlc may leave the schema empty for both built-in and custom types,
+// so we check against the known type names instead.
+func isCustomType(pgType string) bool {
+	return pgTypeToBaseGoType(pgType) == "interface{}"
 }
 
 // customGoType returns the Go type for a custom type (e.g. enum).
