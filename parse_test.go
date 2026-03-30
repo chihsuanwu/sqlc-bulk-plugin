@@ -133,6 +133,112 @@ func TestIsBulkUpdate(t *testing.T) {
 	}
 }
 
+func TestParseInsertColumns(t *testing.T) {
+	tests := []struct {
+		name    string
+		sql     string
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "basic",
+			sql:  `INSERT INTO products (id, name, price) VALUES (UNNEST($1::int[]))`,
+			want: []string{"id", "name", "price"},
+		},
+		{
+			name: "with whitespace",
+			sql:  `INSERT INTO products ( id , name , price ) VALUES (UNNEST($1::int[]))`,
+			want: []string{"id", "name", "price"},
+		},
+		{
+			name: "multiline",
+			sql: `INSERT INTO tra_stop_table (train_id, station, stop_sequence, arrival, departure)
+VALUES (
+    UNNEST($1::int[]),
+    UNNEST($2::text[])
+)`,
+			want: []string{"train_id", "station", "stop_sequence", "arrival", "departure"},
+		},
+		{
+			name:    "no INSERT INTO",
+			sql:     `UPDATE products SET name = $1`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseInsertColumns(tt.sql)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseInsertColumns() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("col[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestParseUpsertAliases(t *testing.T) {
+	tests := []struct {
+		name    string
+		sql     string
+		want    map[int]string
+		wantErr bool
+	}{
+		{
+			name: "basic VALUES UNNEST",
+			sql: `INSERT INTO products (id, name, price)
+VALUES (
+    UNNEST($1::int[]),
+    UNNEST($2::text[]),
+    UNNEST($3::int[])
+)
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+			want: map[int]string{1: "id", 2: "name", 3: "price"},
+		},
+		{
+			name: "single line VALUES",
+			sql:  `INSERT INTO products (id, name) VALUES (UNNEST($1::int[]), UNNEST($2::text[])) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+			want: map[int]string{1: "id", 2: "name"},
+		},
+		{
+			name: "column count mismatch",
+			sql: `INSERT INTO products (id, name, price)
+VALUES (UNNEST($1::int[]), UNNEST($2::text[]))`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseUpsertAliases(tt.sql)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseUpsertAliases() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d aliases, want %d", len(got), len(tt.want))
+			}
+			for k, v := range tt.want {
+				if got[k] != v {
+					t.Errorf("alias[$%d] = %q, want %q", k, got[k], v)
+				}
+			}
+		})
+	}
+}
+
 func TestIsBulkUpsert(t *testing.T) {
 	tests := []struct {
 		comments []string

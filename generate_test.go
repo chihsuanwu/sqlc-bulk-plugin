@@ -373,8 +373,8 @@ func TestGenerateErrorMissingUNNEST(t *testing.T) {
 	}
 }
 
-// TestGenerateBulkUpsertSkipped tests that @bulk upsert queries are silently skipped (Phase 2).
-func TestGenerateBulkUpsertSkipped(t *testing.T) {
+// TestGenerateUpsert tests basic upsert with VALUES (UNNEST(...)) format.
+func TestGenerateUpsert(t *testing.T) {
 	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
 	req := &plugin.GenerateRequest{
 		PluginOptions: opts,
@@ -384,7 +384,110 @@ func TestGenerateBulkUpsertSkipped(t *testing.T) {
 				Name:     "UpsertProducts",
 				Cmd:      ":exec",
 				Comments: []string{"@bulk upsert"},
-				Text:     `INSERT INTO products (id, name) SELECT * FROM UNNEST($1::int[], $2::text[]) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+				Text: `INSERT INTO products (id, name, price, category, is_active, updated_at)
+VALUES (
+    UNNEST($1::int[]),
+    UNNEST($2::text[]),
+    UNNEST($3::int[]),
+    UNNEST($4::text[]),
+    UNNEST($5::boolean[]),
+    UNNEST($6::timestamptz[])
+)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name, price = EXCLUDED.price`,
+				InsertIntoTable: &plugin.Identifier{Name: "products"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					makeParam(2, "", "text", true),
+					makeParam(3, "", "int4", true),
+					makeParam(4, "", "text", true),
+					makeParam(5, "", "bool", true),
+					makeParam(6, "", "timestamptz", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+	if len(resp.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(resp.Files))
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Full column match → model struct reuse
+	if !strings.Contains(got, "items []Product") {
+		t.Errorf("expected model struct reuse ([]Product), got:\n%s", got)
+	}
+	// Should have nullable conversion for category
+	if !strings.Contains(got, ".String") {
+		t.Errorf("expected nullable conversion (.String), got:\n%s", got)
+	}
+	// File name should be bulk.go
+	if resp.Files[0].Name != "bulk.go" {
+		t.Errorf("expected file name bulk.go, got %q", resp.Files[0].Name)
+	}
+}
+
+// TestGenerateUpsertPartialColumns tests upsert with partial columns → generates Item struct.
+func TestGenerateUpsertPartialColumns(t *testing.T) {
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleMethod})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       buildTestCatalog(),
+		Queries: []*plugin.Query{
+			{
+				Name:     "UpsertProductPrices",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk upsert"},
+				Text: `INSERT INTO products (id, price)
+VALUES (
+    UNNEST($1::int[]),
+    UNNEST($2::int[])
+)
+ON CONFLICT (id) DO UPDATE SET price = EXCLUDED.price`,
+				InsertIntoTable: &plugin.Identifier{Name: "products"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					makeParam(2, "", "int4", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Partial column → should generate Item struct
+	if !strings.Contains(got, "UpsertProductPricesItem") {
+		t.Errorf("expected Item struct for partial columns, got:\n%s", got)
+	}
+	if strings.Contains(got, "items []Product") {
+		t.Errorf("should not reuse model struct for partial columns, got:\n%s", got)
+	}
+}
+
+// TestGenerateUpsertMissingInsertIntoTable tests error when InsertIntoTable is not set.
+func TestGenerateUpsertMissingInsertIntoTable(t *testing.T) {
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       buildTestCatalog(),
+		Queries: []*plugin.Query{
+			{
+				Name:     "UpsertProducts",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk upsert"},
+				Text: `INSERT INTO products (id, name)
+VALUES (UNNEST($1::int[]), UNNEST($2::text[]))
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
 				Params: []*plugin.Parameter{
 					makeParam(1, "", "int4", true),
 					makeParam(2, "", "text", true),
@@ -393,12 +496,66 @@ func TestGenerateBulkUpsertSkipped(t *testing.T) {
 		},
 	}
 
+	_, err := generate(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for missing InsertIntoTable, got nil")
+	}
+	if !strings.Contains(err.Error(), "InsertIntoTable") {
+		t.Errorf("error should mention InsertIntoTable, got: %v", err)
+	}
+}
+
+// TestGenerateMixedUpdateAndUpsert tests that update and upsert queries coexist in one file.
+func TestGenerateMixedUpdateAndUpsert(t *testing.T) {
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       buildTestCatalog(),
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkUpdateProductNames",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk update"},
+				Text: `UPDATE products AS p SET name = u.name
+FROM (SELECT UNNEST($1::int[]) AS id, UNNEST($2::text[]) AS name) AS u
+WHERE p.id = u.id`,
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					makeParam(2, "", "text", true),
+				},
+			},
+			{
+				Name:     "UpsertProductPrices",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk upsert"},
+				Text: `INSERT INTO products (id, price)
+VALUES (UNNEST($1::int[]), UNNEST($2::int[]))
+ON CONFLICT (id) DO UPDATE SET price = EXCLUDED.price`,
+				InsertIntoTable: &plugin.Identifier{Name: "products"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					makeParam(2, "", "int4", true),
+				},
+			},
+		},
+	}
+
 	resp, err := generate(context.Background(), req)
 	if err != nil {
-		t.Fatalf("bulk upsert should not error, got: %v", err)
+		t.Fatalf("generate() error: %v", err)
 	}
-	if len(resp.Files) != 0 {
-		t.Errorf("expected 0 files for upsert (Phase 2 skip), got %d", len(resp.Files))
+	if len(resp.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(resp.Files))
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Both adapters should be in the same file
+	if !strings.Contains(got, "BulkUpdateProductNamesBatch") {
+		t.Errorf("expected update adapter, got:\n%s", got)
+	}
+	if !strings.Contains(got, "UpsertProductPricesBatch") {
+		t.Errorf("expected upsert adapter, got:\n%s", got)
 	}
 }
 

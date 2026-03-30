@@ -62,15 +62,17 @@ func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 	var queries []bulkQuery
 
 	for _, q := range req.Queries {
-		if isBulkUpsert(q.Comments) {
-			// Phase 2 — skip with no error
-			continue
-		}
-		if !isBulkUpdate(q.Comments) {
-			continue
-		}
+		var bq bulkQuery
+		var err error
 
-		bq, err := buildBulkQuery(req.Catalog, q)
+		switch {
+		case isBulkUpdate(q.Comments):
+			bq, err = buildBulkUpdateQuery(req.Catalog, q)
+		case isBulkUpsert(q.Comments):
+			bq, err = buildBulkUpsertQuery(req.Catalog, q)
+		default:
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("query %q: %w", q.Name, err)
 		}
@@ -89,47 +91,55 @@ func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 	return &plugin.GenerateResponse{
 		Files: []*plugin.File{
 			{
-				Name:     "bulk_update.go",
+				Name:     "bulk.go",
 				Contents: content,
 			},
 		},
 	}, nil
 }
 
-func buildBulkQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, error) {
-	// Parse target table
+func buildBulkUpdateQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, error) {
 	tableName, err := parseUpdateTable(q.Text)
 	if err != nil {
 		return bulkQuery{}, err
 	}
-
-	// Parse UNNEST aliases (always needed for catalog lookup)
 	aliases, err := parseUNNESTAliases(q.Text)
 	if err != nil {
 		return bulkQuery{}, err
 	}
+	return buildBulkQueryFromAliases(catalog, q, tableName, aliases)
+}
 
-	// Look up table in catalog
+func buildBulkUpsertQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, error) {
+	if q.InsertIntoTable == nil || q.InsertIntoTable.Name == "" {
+		return bulkQuery{}, fmt.Errorf("InsertIntoTable not provided by sqlc for upsert query")
+	}
+	tableName := q.InsertIntoTable.Name
+	aliases, err := parseUpsertAliases(q.Text)
+	if err != nil {
+		return bulkQuery{}, err
+	}
+	return buildBulkQueryFromAliases(catalog, q, tableName, aliases)
+}
+
+func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableName string, aliases map[int]string) (bulkQuery, error) {
 	table, err := findTable(catalog, tableName)
 	if err != nil {
 		return bulkQuery{}, err
 	}
 	colMap := tableColumnMap(table)
 
-	// Determine param naming style
 	isNamedParam := len(q.Params) > 0 && q.Params[0].Column != nil && q.Params[0].Column.Name != ""
 
-	// Build fields
 	fields := make([]bulkField, 0, len(q.Params))
 	paramColumnNames := make([]string, 0, len(q.Params))
 
 	for _, p := range q.Params {
 		alias, ok := aliases[int(p.Number)]
 		if !ok {
-			return bulkQuery{}, fmt.Errorf("no UNNEST alias found for parameter $%d", p.Number)
+			return bulkQuery{}, fmt.Errorf("no column name found for parameter $%d", p.Number)
 		}
 
-		// Determine nullable from catalog
 		nullable := false
 		if catalogCol, ok := colMap[alias]; ok {
 			nullable = !catalogCol.NotNull
@@ -168,7 +178,7 @@ func buildBulkQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, error)
 
 	useModel := isFullColumnMatch(colMap, paramColumnNames)
 
-	bq := bulkQuery{
+	return bulkQuery{
 		QueryName:      q.Name,
 		FuncName:       q.Name + "Batch",
 		TableName:      tableName,
@@ -177,9 +187,7 @@ func buildBulkQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, error)
 		UseModelStruct: useModel,
 		ParamsStruct:   q.Name + "Params",
 		Fields:         fields,
-	}
-
-	return bq, nil
+	}, nil
 }
 
 // needsPgtype returns true if any query uses pgtype.* types.
