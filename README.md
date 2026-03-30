@@ -158,7 +158,6 @@ For pure bulk INSERT (without `ON CONFLICT`), you don't need this plugin. Use sq
 ## Limitations
 
 - PostgreSQL + pgx/v5 only
-- Upsert only supports `VALUES (UNNEST(...))` format (not `SELECT * FROM UNNEST(...)`)
 - Assumes default sqlc settings (`rename`, `overrides`, `emit_pointers_for_null_types` not yet supported)
 - Process plugin only (no WASM)
 

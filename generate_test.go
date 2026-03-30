@@ -624,6 +624,134 @@ WHERE t.id = u.id`,
 	}
 }
 
+// TestGenerateUpsertSelectUNNEST tests SELECT UNNEST format (no VALUES clause).
+func TestGenerateUpsertSelectUNNEST(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "tra_cancelled"},
+						Columns: []*plugin.Column{
+							{Name: "train_id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "station", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+							{Name: "source", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+							{Name: "recorded_at", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "timestamptz"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkUpsertTRACancelled",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk upsert"},
+				Text: `INSERT INTO tra_cancelled (train_id, station, source, recorded_at)
+SELECT
+    UNNEST($1::int4[]),
+    UNNEST($2::text[]),
+    UNNEST($3::text[]),
+    UNNEST($4::timestamptz[])
+ON CONFLICT (train_id, station) DO UPDATE
+SET source = EXCLUDED.source`,
+				InsertIntoTable: &plugin.Identifier{Name: "tra_cancelled"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					makeParam(2, "", "text", true),
+					makeParam(3, "", "text", true),
+					makeParam(4, "", "timestamptz", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+	if len(resp.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(resp.Files))
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Full column match → model struct
+	if !strings.Contains(got, "items []TraCancelled") {
+		t.Errorf("expected model struct reuse ([]TraCancelled), got:\n%s", got)
+	}
+	if !strings.Contains(got, "item.TrainID") {
+		t.Errorf("expected TrainID field, got:\n%s", got)
+	}
+}
+
+// TestGenerateUpsertSelectUNNESTSingleColumn tests SELECT UNNEST with a single column.
+func TestGenerateUpsertSelectUNNESTSingleColumn(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "tra_notes"},
+						Columns: []*plugin.Column{
+							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "note_text", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkUpsertTRANotes",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk upsert"},
+				Text: `INSERT INTO tra_notes (note_text)
+SELECT UNNEST($1::text[])
+ON CONFLICT (note_text) DO UPDATE SET note_text = EXCLUDED.note_text`,
+				InsertIntoTable: &plugin.Identifier{Name: "tra_notes"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "text", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+	if len(resp.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(resp.Files))
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Partial column (only note_text, not id) → Item struct
+	if !strings.Contains(got, "BulkUpsertTRANotesItem") {
+		t.Errorf("expected Item struct for partial columns, got:\n%s", got)
+	}
+	if !strings.Contains(got, "NoteText") {
+		t.Errorf("expected NoteText field, got:\n%s", got)
+	}
+}
+
 // TestGenerateUpsertMissingInsertIntoTable tests error when InsertIntoTable is not set.
 func TestGenerateUpsertMissingInsertIntoTable(t *testing.T) {
 	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})

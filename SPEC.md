@@ -155,7 +155,6 @@ UNNEST\(\$(\d+)::\w+(?:\[\])?\)
 
 ## 4. 已知限制
 
-- `SELECT * FROM UNNEST($1::type[], $2::type[], ...)` 格式的 Upsert 不支援
 - 自訂 PostgreSQL enum type fallback 為 `interface{}`
 - `rename`、`overrides`、`emit_pointers_for_null_types` 等非預設 sqlc 設定不支援（plugin 無法感知 `gen.go` 設定）
 - `:many` + `RETURNING` 的 bulk query 不支援（目前僅處理 `:exec`）
