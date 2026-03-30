@@ -1,6 +1,6 @@
 # sqlc-bulk-plugin
 
-> **⚠️ Work in Progress** — This project is under active development and not yet ready for production use.
+> **⚠️ Early Release** — Core features work but the project is still under active development. Please review generated code before using in production.
 
 A [sqlc](https://sqlc.dev/) process plugin that generates adapter functions for bulk operations using PostgreSQL's `UNNEST` pattern.
 
@@ -75,7 +75,7 @@ sql:
 
 ### 3. Annotate queries
 
-Add `-- @bulk update` above your query:
+Add `-- @bulk update` or `-- @bulk upsert` above your query:
 
 ```sql
 -- @bulk update
@@ -94,16 +94,33 @@ FROM (
 WHERE p.id = u.id;
 ```
 
+```sql
+-- @bulk upsert
+-- name: UpsertProducts :exec
+INSERT INTO products (id, name, price, category)
+VALUES (
+    UNNEST($1::int[]),
+    UNNEST($2::text[]),
+    UNNEST($3::int[]),
+    UNNEST($4::text[])
+)
+ON CONFLICT (id) DO UPDATE SET
+    name     = EXCLUDED.name,
+    price    = EXCLUDED.price,
+    category = EXCLUDED.category;
+```
+
 ### 4. Generate
 
 ```bash
 sqlc generate
 ```
 
-This produces `bulk_update.go` alongside sqlc's normal output.
+This produces `bulk.go` alongside sqlc's normal output.
 
 ## Features
 
+- Supports both `-- @bulk update` and `-- @bulk upsert` annotations
 - Supports both `$N` and `@param_name` parameter syntax
 - Full-column queries reuse sqlc's model struct (e.g. `[]Product`)
 - Partial-column queries get a dedicated `XxxItem` struct
@@ -137,7 +154,8 @@ Control how the adapter is generated with the `style` option:
 ## Limitations
 
 - PostgreSQL + pgx/v5 only
-- `-- @bulk update` only (upsert planned)
+- Upsert only supports `VALUES (UNNEST(...))` format (not `SELECT * FROM UNNEST(...)`)
+- `NULLIF(UNNEST(...))` and other function wrappers around UNNEST are not supported
 - Assumes default sqlc settings (`rename`, `overrides`, `emit_pointers_for_null_types` not yet supported)
 - Process plugin only (no WASM)
 
