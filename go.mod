@@ -1,4 +1,4 @@
-module github.com/toddliao469469/sqlc-bulk-plugin
+module github.com/chihsuanwu/sqlc-bulk-plugin
 
 go 1.26.1
 

@@ -1,6 +1,6 @@
 # sqlc Bulk Operation Plugin — 開發規格文件
 
-> 版本 0.7 · 2026-03-30
+> 版本 0.8 · 2026-03-30
 >
 > 變更紀錄：
 > - v0.1 → v0.2：根據 spike 驗證結果調整標記機制與 struct mapping 策略
@@ -9,6 +9,7 @@
 > - v0.4 → v0.5：修正 nullable 判斷來源——params 的 `not_null` 永遠為 `true`（反映 UNNEST 表達式特性），nullable 必須從 catalog 比對取得
 > - v0.5 → v0.6：新增 FR-8 目標 table 解析；修正 adapter code 範例中的 params field 命名（`$N` 語法對應 `ColumnN`）；新增 Params field 引用規則；附錄補充 sqlc 實際生成的 struct 與 Settings 結構
 > - v0.6 → v0.7：確立第一階段僅支援 sqlc 預設設定；`rename`、`overrides`、`emit_pointers_for_null_types` 等非預設設定列入已知限制
+> - v0.7 → v0.8：Phase 1 實作完成；修正 FR-7——sqlc 會將 `@param` 轉為 `$N` in Query.Text，UNNEST alias 解析永遠需要執行
 
 ---
 
@@ -156,7 +157,10 @@ UNNEST\(\$(\d+)::\w+\[\]\)\s+AS\s+(\w+)
 
 再以 alias 去 `Catalog` 比對 table column，取得 `not_null` 等資訊。
 
-**相容性：** 若使用者使用 `@param_name` 語法，`Query.Params` 本身就帶有 `column.name`，Plugin 優先使用。僅在 `column.name` 為空時 fallback 到 SQL 文字解析。
+**實作補充（v0.8）：**
+- sqlc 會將 `@param_name` 轉換為 `$N` 後再傳入 `Query.Text`，因此 UNNEST alias regex 對兩種語法都適用
+- UNNEST alias 解析**永遠**需要執行（不只是 `$N` 語法），因為 `@param` 語法的 `column.name` 是 param name（如 `"ids"`），而非 table column name（如 `"id"`）。Catalog lookup 需要的是 column name
+- `column.name` 僅用於決定 Params struct 的 field 命名（`ColumnN` vs `PascalCase(name)`）
 
 #### FR-8　目標 Table 解析
 
