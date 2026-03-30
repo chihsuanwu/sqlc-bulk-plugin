@@ -903,8 +903,9 @@ ON CONFLICT (note_text) DO UPDATE SET note_text = EXCLUDED.note_text`,
 	}
 }
 
-// TestGenerateUpsertMissingInsertIntoTable tests error when InsertIntoTable is not set.
-func TestGenerateUpsertMissingInsertIntoTable(t *testing.T) {
+// TestGenerateInsertNoInsertIntoTable tests that INSERT SQL without InsertIntoTable
+// falls back to UPDATE path and errors on missing UNNEST aliases.
+func TestGenerateInsertNoInsertIntoTable(t *testing.T) {
 	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
 	req := &plugin.GenerateRequest{
 		PluginOptions: opts,
@@ -913,7 +914,7 @@ func TestGenerateUpsertMissingInsertIntoTable(t *testing.T) {
 			{
 				Name:     "UpsertProducts",
 				Cmd:      ":exec",
-				Comments: []string{"@bulk upsert"},
+				Comments: []string{"@bulk"},
 				Text: `INSERT INTO products (id, name)
 VALUES (UNNEST($1::int[]), UNNEST($2::text[]))
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
@@ -927,10 +928,7 @@ ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
 
 	_, err := generate(context.Background(), req)
 	if err == nil {
-		t.Fatal("expected error for missing InsertIntoTable, got nil")
-	}
-	if !strings.Contains(err.Error(), "InsertIntoTable") {
-		t.Errorf("error should mention InsertIntoTable, got: %v", err)
+		t.Fatal("expected error, got nil")
 	}
 }
 

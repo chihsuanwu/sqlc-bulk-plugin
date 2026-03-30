@@ -97,20 +97,11 @@ func parseUpsertAliases(sql string) (map[int]string, error) {
 	return result, nil
 }
 
-// isBulkUpdate checks if a query's comments contain the @bulk update annotation.
-func isBulkUpdate(comments []string) bool {
+// isBulk checks if a query's comments contain the @bulk annotation.
+// Matches "@bulk", "@bulk update", "@bulk upsert", "@bulk insert", etc.
+func isBulk(comments []string) bool {
 	for _, c := range comments {
-		if strings.Contains(c, "@bulk update") {
-			return true
-		}
-	}
-	return false
-}
-
-// isBulkUpsert checks if a query's comments contain the @bulk upsert annotation.
-func isBulkUpsert(comments []string) bool {
-	for _, c := range comments {
-		if strings.Contains(c, "@bulk upsert") {
+		if strings.Contains(c, "@bulk") {
 			return true
 		}
 	}

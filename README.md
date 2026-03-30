@@ -75,10 +75,10 @@ sql:
 
 ### 3. Annotate queries
 
-Add `-- @bulk update` or `-- @bulk upsert` above your query:
+Add `-- @bulk` above your query:
 
 ```sql
--- @bulk update
+-- @bulk
 -- name: BulkUpdateProducts :exec
 UPDATE products AS p SET
     name       = u.name,
@@ -95,7 +95,7 @@ WHERE p.id = u.id;
 ```
 
 ```sql
--- @bulk upsert
+-- @bulk
 -- name: UpsertProducts :exec
 INSERT INTO products (id, name, price, category)
 VALUES (
@@ -120,7 +120,7 @@ This produces `bulk.go` alongside sqlc's normal output.
 
 ## Features
 
-- Supports both `-- @bulk update` and `-- @bulk upsert` annotations
+- Single `-- @bulk` annotation for all bulk operations (UPDATE, upsert, INSERT)
 - Supports both `$N` and `@param_name` parameter syntax
 - Full-column queries reuse sqlc's model struct (e.g. `[]Product`)
 - Partial-column queries get a dedicated `XxxItem` struct

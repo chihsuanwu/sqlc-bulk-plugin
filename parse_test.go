@@ -113,22 +113,25 @@ func TestParseUpdateTable(t *testing.T) {
 	}
 }
 
-func TestIsBulkUpdate(t *testing.T) {
+func TestIsBulk(t *testing.T) {
 	tests := []struct {
 		comments []string
 		want     bool
 	}{
+		{[]string{"@bulk"}, true},
 		{[]string{"@bulk update"}, true},
-		{[]string{"some comment", "@bulk update"}, true},
-		{[]string{"@bulk upsert"}, false},
+		{[]string{"@bulk upsert"}, true},
+		{[]string{"@bulk insert"}, true},
+		{[]string{"some comment", "@bulk"}, true},
 		{[]string{}, false},
 		{nil, false},
+		{[]string{"no annotation"}, false},
 	}
 
 	for _, tt := range tests {
-		got := isBulkUpdate(tt.comments)
+		got := isBulk(tt.comments)
 		if got != tt.want {
-			t.Errorf("isBulkUpdate(%v) = %v, want %v", tt.comments, got, tt.want)
+			t.Errorf("isBulk(%v) = %v, want %v", tt.comments, got, tt.want)
 		}
 	}
 }
@@ -239,20 +242,11 @@ VALUES (UNNEST($1::int[]), UNNEST($2::text[]))`,
 	}
 }
 
-func TestIsBulkUpsert(t *testing.T) {
-	tests := []struct {
-		comments []string
-		want     bool
-	}{
-		{[]string{"@bulk upsert"}, true},
-		{[]string{"@bulk update"}, false},
-		{nil, false},
-	}
-
-	for _, tt := range tests {
-		got := isBulkUpsert(tt.comments)
-		if got != tt.want {
-			t.Errorf("isBulkUpsert(%v) = %v, want %v", tt.comments, got, tt.want)
+func TestIsBulkBackCompat(t *testing.T) {
+	// Verify old-style annotations still work
+	for _, c := range []string{"@bulk update", "@bulk upsert", "@bulk insert"} {
+		if !isBulk([]string{c}) {
+			t.Errorf("isBulk(%q) should be true", c)
 		}
 	}
 }

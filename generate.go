@@ -62,16 +62,17 @@ func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 	var queries []bulkQuery
 
 	for _, q := range req.Queries {
+		if !isBulk(q.Comments) {
+			continue
+		}
+
 		var bq bulkQuery
 		var err error
 
-		switch {
-		case isBulkUpdate(q.Comments):
+		if isInsertQuery(q) {
+			bq, err = buildBulkInsertQuery(req.Catalog, q)
+		} else {
 			bq, err = buildBulkUpdateQuery(req.Catalog, q)
-		case isBulkUpsert(q.Comments):
-			bq, err = buildBulkUpsertQuery(req.Catalog, q)
-		default:
-			continue
 		}
 		if err != nil {
 			return nil, fmt.Errorf("query %q: %w", q.Name, err)
@@ -110,7 +111,13 @@ func buildBulkUpdateQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, 
 	return buildBulkQueryFromAliases(catalog, q, tableName, aliases)
 }
 
-func buildBulkUpsertQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, error) {
+// isInsertQuery returns true if the query is an INSERT-based query (upsert or insert).
+// Determined by whether sqlc provides InsertIntoTable.
+func isInsertQuery(q *plugin.Query) bool {
+	return q.InsertIntoTable != nil && q.InsertIntoTable.Name != ""
+}
+
+func buildBulkInsertQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, error) {
 	if q.InsertIntoTable == nil || q.InsertIntoTable.Name == "" {
 		return bulkQuery{}, fmt.Errorf("InsertIntoTable not provided by sqlc for upsert query")
 	}

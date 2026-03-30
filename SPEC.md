@@ -43,10 +43,12 @@ sqlc 對 bulk UPDATE / Upsert 使用 UNNEST 語法時，生成的 Params struct 
 
 ### FR-4　Comment annotation 標記
 
-使用 `-- @bulk` annotation 搭配 `:exec` command：
+使用 `-- @bulk` annotation 標記需要生成 adapter 的 query。Plugin 自動從 SQL 結構判斷 query 類型（UPDATE vs INSERT/Upsert），不需要在 annotation 中區分。
+
+舊格式 `@bulk update`、`@bulk upsert` 仍可使用（向下相容）。
 
 ```sql
--- @bulk update
+-- @bulk
 -- name: BulkUpdateProducts :exec
 UPDATE products AS p SET
     name  = u.name,
@@ -61,7 +63,7 @@ WHERE p.id = u.id;
 ```
 
 ```sql
--- @bulk upsert
+-- @bulk
 -- name: UpsertProducts :exec
 INSERT INTO products (id, name, price)
 VALUES (
