@@ -1,0 +1,17 @@
+version: "2"
+plugins:
+  - name: bulk
+    process:
+      cmd: ./sqlc-bulk-plugin
+sql:
+  - schema: testdata/schema.sql
+    queries: testdata/query.sql
+    engine: postgresql
+    gen:
+      go:
+        package: db
+        out: gen
+        sql_package: pgx/v5
+    codegen:
+      - plugin: bulk
+        out: gen

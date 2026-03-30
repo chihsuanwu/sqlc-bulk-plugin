@@ -1,0 +1,11 @@
+# Binary
+sqlc-bulk-plugin
+
+# Spike artifacts
+spike_dump.json
+
+# Backup
+*.bak
+
+# Generated code (by sqlc, for reference only during spike)
+gen/
