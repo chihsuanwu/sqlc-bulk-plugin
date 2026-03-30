@@ -11,7 +11,7 @@
 > - v0.6 → v0.7：確立第一階段僅支援 sqlc 預設設定；`rename`、`overrides`、`emit_pointers_for_null_types` 等非預設設定列入已知限制
 > - v0.7 → v0.8：Phase 1 實作完成；修正 FR-7——sqlc 會將 `@param` 轉為 `$N` in Query.Text，UNNEST alias 解析永遠需要執行
 > - v0.8 → v0.9：重新設計 FR-6——新增 `style` 參數，支援三種生成模式（`function`/`method`/`interface`），解決 `Querier` interface 整合問題
-> - v0.9 → v1.0：新增 FR-3 Bulk Upsert 實作規格——根據實際專案 SQL 調查確立 `VALUES (UNNEST(...))` 為主要支援格式；新增 FR-9 INSERT column list 解析；`NULLIF` 包裝與 `SELECT * FROM UNNEST(...)` 格式列為已知限制
+> - v0.9 → v1.0：新增 FR-3 Bulk Upsert 實作規格——根據實際專案 SQL 調查確立 `VALUES (UNNEST(...))` 為主要支援格式；新增 FR-9 INSERT column list 解析；`SELECT * FROM UNNEST(...)` 格式列為已知限制；確認 `NULLIF(UNNEST(...))` 等函式包裝在 VALUES 格式中可正常運作
 
 ---
 
@@ -582,7 +582,7 @@ func main() {
 - SendBatch 或 CopyFrom 策略
 - 自動偵測 query 語法（不需標記 comment）的智慧模式
 - `SELECT * FROM UNNEST($1::type[], $2::type[], ...)` 格式的 Upsert（實際專案未使用此格式）
-- `NULLIF(UNNEST(...))` 包裝——UNNEST 被 NULLIF 或其他函式包住時，現有 regex 無法匹配
+- ~~`NULLIF(UNNEST(...))` 包裝~~ ← 已驗證 VALUES 格式中函式包裝（NULLIF、COALESCE 等）可正常運作，regex 匹配內部 UNNEST 子字串不受外層函式影響
 - 自訂 PostgreSQL enum type 的 Go type mapping（如 `cancelled_source_enum`，目前 fallback 為 `interface{}`）
 - 搭配 `rename`、`overrides`、`emit_pointers_for_null_types` 等非預設 sqlc 設定的支援
 - ~~自訂 `:bulkupdate` command tag~~ ← 已驗證不可行
@@ -597,7 +597,7 @@ func main() {
 | pgtype 欄位 type mapping 不完整 | 中 | 先支援 `int4 / int2 / int8 / text / bool / timestamptz / float4 / float8`，其餘遇到再補，並在 README 列出支援清單 |
 | UNNEST alias 解析失敗（UPDATE） | 中 | SQL 寫法可能不符合預期的 `UNNEST($N::type[]) AS name` 格式。若 regex 無法提取 alias，plugin 報錯並提示使用者改用 `@param_name` 語法或調整 SQL 格式 |
 | INSERT column list 解析失敗（Upsert） | 低 | SQL 必須包含明確的 column list `INSERT INTO xxx (col1, col2, ...)`。若省略 column list（如 `INSERT INTO xxx VALUES (...)`），regex 無法提取欄位名稱，plugin 報錯 |
-| UNNEST 被函式包裝（如 `NULLIF`） | 中 | `NULLIF(UNNEST($N::type[]), ...)` 無法被現有 regex 匹配。目前不支援，plugin 報錯提示使用者移除包裝函式 |
+| ~~UNNEST 被函式包裝（如 `NULLIF`）~~ | ~~中~~ | ✅ 已驗證 VALUES 格式中函式包裝可正常運作（regex 匹配內部 UNNEST 子字串） |
 | UPDATE 目標 table 解析失敗 | 低 | SQL 寫法可能有 schema prefix（如 `public.products`）或不常見格式。先支援 `UPDATE table_name` 和 `UPDATE table_name AS alias`，其餘格式報錯 |
 | Param name → table column mapping 失敗 | 中 | Alias 名稱可能與 table column name 不一致。若無法 match，fallback 為全部標記 NOT NULL（使用基本 Go type），並在生成的 code 加上 comment 提示 |
 | Nullable 欄位的 Params type 與 Model type 不一致 | 中 | 使用 `$N` 語法時，sqlc 的 Params 中 nullable 欄位可能用基本型別（如 `[]string`）而非 `pgtype.*`，但 model struct 用 `pgtype.Text`。複用 model struct 時 adapter 需處理型別轉換 |
