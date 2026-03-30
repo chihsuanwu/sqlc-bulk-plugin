@@ -31,17 +31,32 @@ type bulkField struct {
 	ConvertExpr    string
 }
 
+const (
+	styleFunction  = "function"
+	styleMethod    = "method"
+	styleInterface = "interface"
+)
+
 type pluginOptions struct {
 	Package string `json:"package"`
+	Style   string `json:"style"`
 }
 
 func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.GenerateResponse, error) {
 	// Parse plugin options
-	opts := pluginOptions{Package: "db"}
+	opts := pluginOptions{Package: "db", Style: styleFunction}
 	if len(req.PluginOptions) > 0 {
 		if err := json.Unmarshal(req.PluginOptions, &opts); err != nil {
 			return nil, fmt.Errorf("invalid plugin options: %w", err)
 		}
+	}
+	switch opts.Style {
+	case styleFunction, styleMethod, styleInterface:
+		// valid
+	case "":
+		opts.Style = styleFunction
+	default:
+		return nil, fmt.Errorf("invalid style %q: must be %q, %q, or %q", opts.Style, styleFunction, styleMethod, styleInterface)
 	}
 
 	var queries []bulkQuery
@@ -66,7 +81,7 @@ func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 		return &plugin.GenerateResponse{}, nil
 	}
 
-	content, err := renderTemplate(opts.Package, queries)
+	content, err := renderTemplate(opts.Package, opts.Style, queries)
 	if err != nil {
 		return nil, err
 	}

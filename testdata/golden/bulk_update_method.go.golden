@@ -63,11 +63,3 @@ func (q *Queries) BulkUpdateProductNamesBatch(ctx context.Context, items []BulkU
 	}
 	return q.BulkUpdateProductNames(ctx, params)
 }
-
-type BulkQuerier interface {
-	BulkUpdateProductsBatch(ctx context.Context, items []Product) error
-	BulkUpdateProductPricesBatch(ctx context.Context, items []BulkUpdateProductPricesItem) error
-	BulkUpdateProductNamesBatch(ctx context.Context, items []BulkUpdateProductNamesItem) error
-}
-
-var _ BulkQuerier = (*Queries)(nil)
