@@ -7,5 +7,9 @@ spike_dump.json
 # Backup
 *.bak
 
+# Coverage
+cover.out
+cover.html
+
 # Generated code (by sqlc, for reference only during spike)
 gen/
