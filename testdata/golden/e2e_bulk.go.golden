@@ -69,7 +69,7 @@ func UpsertItemsBatch(ctx context.Context, q Querier, items []UpsertItemsItem) e
 type UpsertOrdersItem struct {
 	Customer  string
 	Amount    int32
-	Note      pgtype.Text
+	Note      string
 	IsPaid    bool
 	Status    OrderStatus
 	OrderedAt pgtype.Timestamptz
@@ -88,7 +88,7 @@ func UpsertOrdersBatch(ctx context.Context, q Querier, items []UpsertOrdersItem)
 	for i, item := range items {
 		params.Column1[i] = item.Customer
 		params.Column2[i] = item.Amount
-		params.Column3[i] = item.Note.String
+		params.Column3[i] = item.Note
 		params.Column4[i] = item.IsPaid
 		params.Column5[i] = item.Status
 		params.Column6[i] = item.OrderedAt
