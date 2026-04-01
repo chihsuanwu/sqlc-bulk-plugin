@@ -952,6 +952,75 @@ WHERE e.id = u.id`,
 	}
 }
 
+// TestGeneratePartialColumnsNullable tests that partial column match with nullable columns
+// generates Item struct fields using base types (matching sqlc params), not pgtype.* types.
+func TestGeneratePartialColumnsNullable(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "trains"},
+						Columns: []*plugin.Column{
+							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "name", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+							{Name: "note_id", NotNull: false, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkInsertTrains",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk insert"},
+				Text: `INSERT INTO trains (id, note_id)
+VALUES (
+    UNNEST($1::int[]),
+    NULLIF(UNNEST($2::int[]), 0)
+)`,
+				InsertIntoTable: &plugin.Identifier{Name: "trains"},
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					makeParam(2, "", "int4", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Partial column match → should generate Item struct (not model struct)
+	if !strings.Contains(got, "BulkInsertTrainsItem") {
+		t.Errorf("expected Item struct for partial columns, got:\n%s", got)
+	}
+	// note_id should be int32 (matching params), NOT pgtype.Int4
+	if strings.Contains(got, "pgtype.Int4") {
+		t.Errorf("Item struct should use base type int32 for note_id, not pgtype.Int4, got:\n%s", got)
+	}
+	if !strings.Contains(got, "NoteID int32") {
+		t.Errorf("expected 'NoteID int32' in Item struct, got:\n%s", got)
+	}
+	// Direct assignment, no accessor needed
+	if strings.Contains(got, ".Int32") {
+		t.Errorf("should not have .Int32 accessor for base type, got:\n%s", got)
+	}
+}
+
 // TestGenerateUpsertSelectUNNEST tests SELECT UNNEST format (no VALUES clause).
 func TestGenerateUpsertSelectUNNEST(t *testing.T) {
 	catalog := &plugin.Catalog{

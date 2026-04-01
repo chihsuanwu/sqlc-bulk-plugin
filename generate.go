@@ -156,17 +156,15 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 			return bulkQuery{}, fmt.Errorf("no column name found for parameter $%d", p.Number)
 		}
 
-		nullable := false
-		if catalogCol, ok := colMap[alias]; ok {
-			nullable = !catalogCol.NotNull
-		}
-
 		pgType := ""
 		if p.Column != nil && p.Column.Type != nil {
 			pgType = p.Column.Type.Name
 		}
 
-		goType := resolveGoType(pgType, nullable)
+		// Use base types for Item struct fields, matching sqlc's params element types.
+		// UNNEST params are always base types (e.g. int32, not pgtype.Int4) regardless
+		// of catalog nullability. Null semantics are handled in SQL (e.g. NULLIF).
+		goType := resolveGoType(pgType, false)
 		var paramsElem string
 		if isCustomType(pgType) {
 			paramsElem = pascalCase(pgType)
@@ -197,6 +195,25 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 	}
 
 	useModel := isFullColumnMatch(colMap, paramColumnNames)
+
+	// When reusing the model struct, field types come from sqlc's model which
+	// uses catalog nullability. Recompute GoType and ConvertExpr accordingly.
+	if useModel {
+		for i, f := range fields {
+			catalogCol, ok := colMap[f.ColumnName]
+			if !ok || catalogCol.NotNull {
+				continue
+			}
+			pgType := ""
+			if q.Params[i].Column != nil && q.Params[i].Column.Type != nil {
+				pgType = q.Params[i].Column.Type.Name
+			}
+			goType := resolveGoType(pgType, true)
+			fieldAccess := "item." + f.ItemFieldName
+			fields[i].GoType = goType
+			fields[i].ConvertExpr = conversionExpr(fieldAccess, goType, f.ParamsElemType)
+		}
+	}
 
 	returnType, err := resolveReturnType(q)
 	if err != nil {
