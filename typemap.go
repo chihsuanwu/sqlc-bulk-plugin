@@ -2,6 +2,44 @@ package main
 
 import "fmt"
 
+type pgTypeMapping struct {
+	baseGoType     string
+	nullableGoType string
+}
+
+// pgTypeMap maps PostgreSQL type names to their Go type representations.
+// When baseGoType == nullableGoType, the type handles nullability internally (e.g. pgtype.*).
+var pgTypeMap = map[string]pgTypeMapping{
+	"int4":                        {"int32", "pgtype.Int4"},
+	"serial":                      {"int32", "pgtype.Int4"},
+	"int2":                        {"int16", "pgtype.Int2"},
+	"smallserial":                 {"int16", "pgtype.Int2"},
+	"smallint":                    {"int16", "pgtype.Int2"},
+	"int8":                        {"int64", "pgtype.Int8"},
+	"bigserial":                   {"int64", "pgtype.Int8"},
+	"bigint":                      {"int64", "pgtype.Int8"},
+	"text":                        {"string", "pgtype.Text"},
+	"varchar":                     {"string", "pgtype.Text"},
+	"character varying":           {"string", "pgtype.Text"},
+	"bool":                        {"bool", "pgtype.Bool"},
+	"boolean":                     {"bool", "pgtype.Bool"},
+	"float4":                      {"float32", "pgtype.Float4"},
+	"real":                        {"float32", "pgtype.Float4"},
+	"float8":                      {"float64", "pgtype.Float8"},
+	"double precision":            {"float64", "pgtype.Float8"},
+	"timestamptz":                 {"pgtype.Timestamptz", "pgtype.Timestamptz"},
+	"timestamp with time zone":    {"pgtype.Timestamptz", "pgtype.Timestamptz"},
+	"timestamp":                   {"pgtype.Timestamp", "pgtype.Timestamp"},
+	"timestamp without time zone": {"pgtype.Timestamp", "pgtype.Timestamp"},
+	"date":                        {"pgtype.Date", "pgtype.Date"},
+	"uuid":                        {"pgtype.UUID", "pgtype.UUID"},
+	"json":                        {"[]byte", "[]byte"},
+	"jsonb":                       {"[]byte", "[]byte"},
+	"bytea":                       {"[]byte", "[]byte"},
+	"numeric":                     {"pgtype.Numeric", "pgtype.Numeric"},
+	"decimal":                     {"pgtype.Numeric", "pgtype.Numeric"},
+}
+
 // pgTypeToGoType returns the Go type for use in Item/Model structs.
 // When nullable, uses pgtype.* types.
 func pgTypeToGoType(pgType string, nullable bool) string {
@@ -12,73 +50,17 @@ func pgTypeToGoType(pgType string, nullable bool) string {
 }
 
 func pgTypeToBaseGoType(pgType string) string {
-	switch pgType {
-	case "int4", "serial":
-		return "int32"
-	case "int2", "smallserial", "smallint":
-		return "int16"
-	case "int8", "bigserial", "bigint":
-		return "int64"
-	case "text", "varchar", "character varying":
-		return "string"
-	case "bool", "boolean":
-		return "bool"
-	case "float4", "real":
-		return "float32"
-	case "float8", "double precision":
-		return "float64"
-	case "timestamptz", "timestamp with time zone":
-		return "pgtype.Timestamptz"
-	case "timestamp", "timestamp without time zone":
-		return "pgtype.Timestamp"
-	case "date":
-		return "pgtype.Date"
-	case "uuid":
-		return "pgtype.UUID"
-	case "json", "jsonb":
-		return "[]byte"
-	case "bytea":
-		return "[]byte"
-	case "numeric", "decimal":
-		return "pgtype.Numeric"
-	default:
-		return "interface{}"
+	if m, ok := pgTypeMap[pgType]; ok {
+		return m.baseGoType
 	}
+	return "interface{}"
 }
 
 func pgTypeToNullableGoType(pgType string) string {
-	switch pgType {
-	case "int4", "serial":
-		return "pgtype.Int4"
-	case "int2", "smallserial", "smallint":
-		return "pgtype.Int2"
-	case "int8", "bigserial", "bigint":
-		return "pgtype.Int8"
-	case "text", "varchar", "character varying":
-		return "pgtype.Text"
-	case "bool", "boolean":
-		return "pgtype.Bool"
-	case "float4", "real":
-		return "pgtype.Float4"
-	case "float8", "double precision":
-		return "pgtype.Float8"
-	case "timestamptz", "timestamp with time zone":
-		return "pgtype.Timestamptz"
-	case "timestamp", "timestamp without time zone":
-		return "pgtype.Timestamp"
-	case "date":
-		return "pgtype.Date"
-	case "uuid":
-		return "pgtype.UUID"
-	case "json", "jsonb":
-		return "[]byte"
-	case "bytea":
-		return "[]byte"
-	case "numeric", "decimal":
-		return "pgtype.Numeric"
-	default:
-		return "interface{}"
+	if m, ok := pgTypeMap[pgType]; ok {
+		return m.nullableGoType
 	}
+	return "interface{}"
 }
 
 // pgTypeToParamsElemType returns the element type inside sqlc's Params slices.
@@ -91,7 +73,8 @@ func pgTypeToParamsElemType(pgType string) string {
 // sqlc may leave the schema empty for both built-in and custom types,
 // so we check against the known type names instead.
 func isCustomType(pgType string) bool {
-	return pgTypeToBaseGoType(pgType) == "interface{}"
+	_, ok := pgTypeMap[pgType]
+	return !ok
 }
 
 // customGoType returns the Go type for a custom type (e.g. enum).
@@ -102,6 +85,15 @@ func customGoType(pgType string, nullable bool) string {
 		return "Null" + name
 	}
 	return name
+}
+
+// resolveGoType returns the Go type string for a PG type, handling both
+// built-in and custom types (enums).
+func resolveGoType(pgType string, nullable bool) string {
+	if isCustomType(pgType) {
+		return customGoType(pgType, nullable)
+	}
+	return pgTypeToGoType(pgType, nullable)
 }
 
 // conversionExpr returns the expression to convert from Item struct field to Params element.

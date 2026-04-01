@@ -28,7 +28,6 @@ type bulkField struct {
 	ItemFieldName  string
 	GoType         string
 	ParamsElemType string
-	NeedsConvert   bool
 	ConvertExpr    string
 }
 
@@ -131,9 +130,6 @@ func isInsertQuery(q *plugin.Query) bool {
 }
 
 func buildBulkInsertQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, error) {
-	if q.InsertIntoTable == nil || q.InsertIntoTable.Name == "" {
-		return bulkQuery{}, fmt.Errorf("InsertIntoTable not provided by sqlc for upsert query")
-	}
 	tableName := q.InsertIntoTable.Name
 	aliases, err := parseUpsertAliases(q.Text)
 	if err != nil {
@@ -170,12 +166,11 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 			pgType = p.Column.Type.Name
 		}
 
-		var goType, paramsElem string
+		goType := resolveGoType(pgType, nullable)
+		var paramsElem string
 		if isCustomType(pgType) {
-			goType = customGoType(pgType, nullable)
 			paramsElem = pascalCase(pgType)
 		} else {
-			goType = pgTypeToGoType(pgType, nullable)
 			paramsElem = pgTypeToParamsElemType(pgType)
 		}
 		itemField := pascalCase(alias)
@@ -195,7 +190,6 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 			ItemFieldName:  itemField,
 			GoType:         goType,
 			ParamsElemType: paramsElem,
-			NeedsConvert:   goType != paramsElem,
 			ConvertExpr:    convertExpr,
 		})
 
@@ -238,13 +232,7 @@ func resolveReturnType(q *plugin.Query) (string, error) {
 	if col.Type == nil {
 		return "", fmt.Errorf(":many RETURNING column has no type information")
 	}
-	var goType string
-	if isCustomType(col.Type.Name) {
-		goType = customGoType(col.Type.Name, !col.NotNull)
-	} else {
-		goType = pgTypeToGoType(col.Type.Name, !col.NotNull)
-	}
-	return "[]" + goType, nil
+	return "[]" + resolveGoType(col.Type.Name, !col.NotNull), nil
 }
 
 // needsPgtype returns true if any query uses pgtype.* types.
