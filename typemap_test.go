@@ -20,6 +20,18 @@ func TestPgTypeToGoType(t *testing.T) {
 		{"float8", true, "pgtype.Float8"},
 		{"int2", false, "int16"},
 		{"int8", false, "int64"},
+		{"uuid", false, "pgtype.UUID"},
+		{"uuid", true, "pgtype.UUID"},
+		{"json", false, "[]byte"},
+		{"json", true, "[]byte"},
+		{"jsonb", false, "[]byte"},
+		{"jsonb", true, "[]byte"},
+		{"bytea", false, "[]byte"},
+		{"bytea", true, "[]byte"},
+		{"numeric", false, "pgtype.Numeric"},
+		{"numeric", true, "pgtype.Numeric"},
+		{"decimal", false, "pgtype.Numeric"},
+		{"decimal", true, "pgtype.Numeric"},
 		{"unknown_type", false, "interface{}"},
 		{"unknown_type", true, "interface{}"},
 	}
@@ -35,6 +47,21 @@ func TestPgTypeToGoType(t *testing.T) {
 				t.Errorf("pgTypeToGoType(%q, %v) = %q, want %q", tt.pgType, tt.nullable, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsCustomType(t *testing.T) {
+	builtins := []string{"int4", "text", "bool", "uuid", "json", "jsonb", "bytea", "numeric", "decimal", "timestamptz"}
+	for _, typ := range builtins {
+		if isCustomType(typ) {
+			t.Errorf("isCustomType(%q) = true, want false", typ)
+		}
+	}
+	customs := []string{"order_status", "my_enum"}
+	for _, typ := range customs {
+		if !isCustomType(typ) {
+			t.Errorf("isCustomType(%q) = false, want true", typ)
+		}
 	}
 }
 

@@ -31,10 +31,14 @@ func TestParseUNNESTAliases(t *testing.T) {
 			want: map[int]string{1: "id"},
 		},
 		{
-			name: "extra whitespace",
+			name: "extra whitespace inside parens",
 			sql:  `UNNEST( $1::int[] )   AS   id`,
-			// regex expects UNNEST($N::type[]) — no space inside parens
-			wantErr: true,
+			want: map[int]string{1: "id"},
+		},
+		{
+			name: "whitespace around type cast",
+			sql:  `UNNEST($1 :: int[]) AS id`,
+			want: map[int]string{1: "id"},
 		},
 		{
 			name:    "no UNNEST patterns",
@@ -92,6 +96,11 @@ func TestParseUpdateTable(t *testing.T) {
 			name: "lowercase",
 			sql:  `update orders set status = $1`,
 			want: "orders",
+		},
+		{
+			name: "schema-qualified table",
+			sql:  `UPDATE public.products SET name = $1`,
+			want: "products",
 		},
 		{
 			name:    "no UPDATE keyword",
@@ -211,6 +220,11 @@ ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
 		{
 			name: "single line VALUES",
 			sql:  `INSERT INTO products (id, name) VALUES (UNNEST($1::int[]), UNNEST($2::text[])) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+			want: map[int]string{1: "id", 2: "name"},
+		},
+		{
+			name: "whitespace inside UNNEST parens",
+			sql:  `INSERT INTO products (id, name) VALUES (UNNEST( $1::int[] ), UNNEST( $2::text[] )) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
 			want: map[int]string{1: "id", 2: "name"},
 		},
 		{

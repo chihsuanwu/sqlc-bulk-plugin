@@ -18,3 +18,11 @@ CREATE TABLE items (
     name  TEXT NOT NULL UNIQUE,
     price INT  NOT NULL
 );
+
+-- Table 3: uuid, jsonb, bytea, numeric types
+CREATE TABLE events (
+    id      UUID PRIMARY KEY,
+    payload JSONB    NOT NULL,
+    image   BYTEA,
+    score   NUMERIC  NOT NULL
+);

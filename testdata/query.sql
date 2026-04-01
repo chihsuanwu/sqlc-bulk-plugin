@@ -68,6 +68,33 @@ VALUES (
 )
 RETURNING id;
 
--- 6. Non-bulk query — should be ignored by plugin
+-- 6. Bulk UPDATE with uuid, jsonb, bytea, numeric types
+-- @bulk
+-- name: BulkUpdateEvents :exec
+UPDATE events AS e SET
+    payload = u.payload,
+    image   = u.image,
+    score   = u.score
+FROM (
+    SELECT
+        UNNEST($1::uuid[])    AS id,
+        UNNEST($2::jsonb[])   AS payload,
+        UNNEST($3::bytea[])   AS image,
+        UNNEST($4::numeric[]) AS score
+) AS u
+WHERE e.id = u.id;
+
+-- 7. Upsert with NULLIF wrapping UNNEST
+-- @bulk
+-- name: UpsertItemsNullif :exec
+INSERT INTO items (name, price)
+VALUES (
+    NULLIF(UNNEST($1::text[]), ''),
+    UNNEST($2::int[])
+)
+ON CONFLICT (name) DO UPDATE SET
+    price = EXCLUDED.price;
+
+-- 8. Non-bulk query — should be ignored by plugin
 -- name: GetOrderByID :one
 SELECT * FROM orders WHERE id = $1;

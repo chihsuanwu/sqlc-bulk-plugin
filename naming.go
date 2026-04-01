@@ -35,7 +35,46 @@ func pascalCase(snake string) string {
 	return b.String()
 }
 
+// irregularPlurals maps irregular plural forms to their singular.
+var irregularPlurals = map[string]string{
+	"analyses":  "analysis",
+	"axes":      "axis",
+	"diagnoses": "diagnosis",
+	"indices":   "index",
+	"matrices":  "matrix",
+	"vertices":  "vertex",
+}
+
+// alreadySingular contains words ending in 's' that should not be stripped.
+var alreadySingular = map[string]bool{
+	"alias":    true,
+	"atlas":    true,
+	"basis":    true,
+	"bias":     true,
+	"bonus":    true,
+	"bus":      true,
+	"campus":   true,
+	"canvas":   true,
+	"census":   true,
+	"corpus":   true,
+	"focus":    true,
+	"gas":      true,
+	"genus":    true,
+	"lens":     true,
+	"radius":   true,
+	"series":   true,
+	"species":  true,
+	"status":   true,
+	"virus":    true,
+}
+
 func singularize(name string) string {
+	if val, ok := irregularPlurals[name]; ok {
+		return val
+	}
+	if alreadySingular[name] {
+		return name
+	}
 	if strings.HasSuffix(name, "ies") {
 		return name[:len(name)-3] + "y"
 	}

@@ -36,9 +36,17 @@ func TestSingularize(t *testing.T) {
 		{"boxes", "box"},
 		{"addresses", "address"},
 		{"buses", "bus"},
-		{"status", "statu"}, // known edge case: naive singularize
+		{"status", "status"},
 		{"class", "class"},
 		{"user", "user"},
+		{"campus", "campus"},
+		{"bonus", "bonus"},
+		{"virus", "virus"},
+		{"series", "series"},
+		{"analyses", "analysis"},
+		{"indices", "index"},
+		{"statuses", "status"},
+		{"gas", "gas"},
 	}
 
 	for _, tt := range tests {

@@ -108,3 +108,36 @@ func BulkInsertItemsBatch(ctx context.Context, q Querier, items []BulkInsertItem
 	}
 	return q.BulkInsertItems(ctx, params)
 }
+
+func BulkUpdateEventsBatch(ctx context.Context, q Querier, items []Event) error {
+	params := BulkUpdateEventsParams{
+		Column1: make([]pgtype.UUID, len(items)),
+		Column2: make([][]byte, len(items)),
+		Column3: make([][]byte, len(items)),
+		Column4: make([]pgtype.Numeric, len(items)),
+	}
+	for i, item := range items {
+		params.Column1[i] = item.ID
+		params.Column2[i] = item.Payload
+		params.Column3[i] = item.Image
+		params.Column4[i] = item.Score
+	}
+	return q.BulkUpdateEvents(ctx, params)
+}
+
+type UpsertItemsNullifItem struct {
+	Name  string
+	Price int32
+}
+
+func UpsertItemsNullifBatch(ctx context.Context, q Querier, items []UpsertItemsNullifItem) error {
+	params := UpsertItemsNullifParams{
+		Column1: make([]string, len(items)),
+		Column2: make([]int32, len(items)),
+	}
+	for i, item := range items {
+		params.Column1[i] = item.Name
+		params.Column2[i] = item.Price
+	}
+	return q.UpsertItemsNullif(ctx, params)
+}

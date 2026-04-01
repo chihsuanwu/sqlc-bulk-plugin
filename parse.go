@@ -8,17 +8,17 @@ import (
 )
 
 var (
-	// Matches: UNNEST($1::int[]) AS id
-	unnestAliasRe = regexp.MustCompile(`(?i)UNNEST\(\$(\d+)::\w+(?:\[\])?\)\s+AS\s+(\w+)`)
+	// Matches: UNNEST($1::int[]) AS id — tolerates whitespace inside parens and around ::
+	unnestAliasRe = regexp.MustCompile(`(?i)UNNEST\(\s*\$(\d+)\s*::\s*\w+(?:\[\])?\s*\)\s+AS\s+(\w+)`)
 
-	// Matches: UPDATE products or UPDATE products AS p
-	updateTableRe = regexp.MustCompile(`(?i)UPDATE\s+(\w+)`)
+	// Matches: UPDATE products, UPDATE public.products, UPDATE products AS p
+	updateTableRe = regexp.MustCompile(`(?i)UPDATE\s+(?:\w+\.)?(\w+)`)
 
 	// Matches: INSERT INTO tablename (col1, col2, ...)
 	insertColumnsRe = regexp.MustCompile(`(?i)INSERT\s+INTO\s+\w+\s*\(([^)]+)\)`)
 
-	// Matches: UNNEST($1::int[]) without requiring AS alias
-	unnestParamRe = regexp.MustCompile(`(?i)UNNEST\(\$(\d+)::\w+(?:\[\])?\)`)
+	// Matches: UNNEST($1::int[]) without requiring AS alias — tolerates whitespace
+	unnestParamRe = regexp.MustCompile(`(?i)UNNEST\(\s*\$(\d+)\s*::\s*\w+(?:\[\])?\s*\)`)
 )
 
 // parseUNNESTAliases extracts $N → column alias mappings from SQL text.

@@ -33,6 +33,14 @@ func pgTypeToBaseGoType(pgType string) string {
 		return "pgtype.Timestamp"
 	case "date":
 		return "pgtype.Date"
+	case "uuid":
+		return "pgtype.UUID"
+	case "json", "jsonb":
+		return "[]byte"
+	case "bytea":
+		return "[]byte"
+	case "numeric", "decimal":
+		return "pgtype.Numeric"
 	default:
 		return "interface{}"
 	}
@@ -60,6 +68,14 @@ func pgTypeToNullableGoType(pgType string) string {
 		return "pgtype.Timestamp"
 	case "date":
 		return "pgtype.Date"
+	case "uuid":
+		return "pgtype.UUID"
+	case "json", "jsonb":
+		return "[]byte"
+	case "bytea":
+		return "[]byte"
+	case "numeric", "decimal":
+		return "pgtype.Numeric"
 	default:
 		return "interface{}"
 	}

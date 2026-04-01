@@ -84,6 +84,36 @@ func TestGenerateInvalidStyle(t *testing.T) {
 	}
 }
 
+func TestGenerateEmptyQueryList(t *testing.T) {
+	req := &plugin.GenerateRequest{
+		PluginOptions: []byte(`{"package": "db"}`),
+		Catalog:       buildTestCatalog(),
+		Queries:       []*plugin.Query{},
+	}
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+	if len(resp.Files) != 0 {
+		t.Errorf("expected 0 files for empty query list, got %d", len(resp.Files))
+	}
+}
+
+func TestGenerateNilQueryList(t *testing.T) {
+	req := &plugin.GenerateRequest{
+		PluginOptions: []byte(`{"package": "db"}`),
+		Catalog:       buildTestCatalog(),
+		Queries:       nil,
+	}
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+	if len(resp.Files) != 0 {
+		t.Errorf("expected 0 files for nil query list, got %d", len(resp.Files))
+	}
+}
+
 // TestGenerateNullableFields tests multiple nullable columns with different pgtype conversions.
 func TestGenerateNullableFields(t *testing.T) {
 	catalog := &plugin.Catalog{
@@ -165,6 +195,91 @@ WHERE o.id = u.id`,
 	}
 	if got != string(want) {
 		t.Errorf("output mismatch.\n\nGot:\n%s\n\nWant:\n%s", got, want)
+	}
+}
+
+// TestGenerateNewTypes tests uuid, jsonb, bytea, and numeric columns through the full generate pipeline.
+func TestGenerateNewTypes(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "events"},
+						Columns: []*plugin.Column{
+							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "uuid"}},
+							{Name: "payload", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "jsonb"}},
+							{Name: "attachment", NotNull: false, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "bytea"}},
+							{Name: "score", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "numeric"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkUpdateEvents",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk"},
+				Text: `UPDATE events AS e SET
+    payload    = u.payload,
+    attachment = u.attachment,
+    score      = u.score
+FROM (
+    SELECT
+        UNNEST($1::uuid[])    AS id,
+        UNNEST($2::jsonb[])   AS payload,
+        UNNEST($3::bytea[])   AS attachment,
+        UNNEST($4::numeric[]) AS score
+) AS u
+WHERE e.id = u.id`,
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "uuid", true),
+					makeParam(2, "", "jsonb", true),
+					makeParam(3, "", "bytea", true),
+					makeParam(4, "", "numeric", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+	if len(resp.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(resp.Files))
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Verify uuid type is used (not interface{})
+	if !strings.Contains(got, "pgtype.UUID") {
+		t.Error("expected pgtype.UUID in output")
+	}
+	// Verify jsonb maps to []byte
+	if !strings.Contains(got, "[]byte") {
+		t.Error("expected []byte in output for jsonb/bytea")
+	}
+	// Verify numeric maps to pgtype.Numeric
+	if !strings.Contains(got, "pgtype.Numeric") {
+		t.Error("expected pgtype.Numeric in output")
+	}
+	// Verify no interface{} fallback
+	if strings.Contains(got, "interface{}") {
+		t.Errorf("unexpected interface{} in output, types should be fully resolved:\n%s", got)
+	}
+	// Verify it's valid Go (format.Source succeeded)
+	if !strings.Contains(got, "package db") {
+		t.Error("expected package declaration in output")
 	}
 }
 
