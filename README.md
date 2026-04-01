@@ -149,11 +149,15 @@ Control how the adapter is generated with the `style` option:
 | `int8`, `bigserial` | `int64` | `pgtype.Int8` |
 | `text`, `varchar` | `string` | `pgtype.Text` |
 | `bool` | `bool` | `pgtype.Bool` |
-| `timestamptz` | `pgtype.Timestamptz` | `pgtype.Timestamptz` |
-| `timestamp` | `pgtype.Timestamp` | `pgtype.Timestamp` |
 | `float4` | `float32` | `pgtype.Float4` |
 | `float8` | `float64` | `pgtype.Float8` |
+| `timestamptz` | `pgtype.Timestamptz` | `pgtype.Timestamptz` |
+| `timestamp` | `pgtype.Timestamp` | `pgtype.Timestamp` |
 | `date` | `pgtype.Date` | `pgtype.Date` |
+| `uuid` | `pgtype.UUID` | `pgtype.UUID` |
+| `json`, `jsonb` | `[]byte` | `[]byte` |
+| `bytea` | `[]byte` | `[]byte` |
+| `numeric`, `decimal` | `pgtype.Numeric` | `pgtype.Numeric` |
 | Custom enums | `EnumName` | `NullEnumName` |
 
 ## What about bulk INSERT?

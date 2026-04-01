@@ -45,6 +45,9 @@ go test -tags e2e -update -run TestE2E .
 - For INSERT/Upsert, column names come from `INSERT INTO xxx (col1, col2, ...)` column list, not UNNEST aliases.
 - Nullable is determined from Catalog, never from `Query.Params[].column.not_null` (always true for UNNEST).
 - Custom types (enums) are detected by checking if the type name is absent from the built-in PG type map, not by checking `Type.Schema` (sqlc leaves schema empty for both built-in and custom types).
+- UNNEST regex patterns tolerate whitespace inside parentheses and around `::` (e.g. `UNNEST( $1 :: int[] )`).
+- UPDATE table regex supports schema-qualified names (e.g. `UPDATE public.products` extracts `products`).
+- `singularize()` uses exception maps (`alreadySingular`, `irregularPlurals`) to handle words like `status`, `bus`, `analyses` correctly before applying suffix rules.
 - Three generation styles (`function`/`method`/`interface`) controlled by `style` option. Default is `function` (standalone function accepting `Querier`).
 - `:many` with single-column `RETURNING` is supported; return type resolved from `Query.Columns`.
 - Assumes default sqlc settings (no rename/overrides support).
