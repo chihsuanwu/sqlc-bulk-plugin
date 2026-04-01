@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// BulkUpdateProductsBatch converts a slice of Product into BulkUpdateProductsParams and calls BulkUpdateProducts.
 func BulkUpdateProductsBatch(ctx context.Context, q Querier, items []Product) error {
 	params := BulkUpdateProductsParams{
 		Column1: make([]int32, len(items)),
@@ -33,6 +34,7 @@ type BulkUpdateProductPricesItem struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+// BulkUpdateProductPricesBatch converts a slice of BulkUpdateProductPricesItem into BulkUpdateProductPricesParams and calls BulkUpdateProductPrices.
 func BulkUpdateProductPricesBatch(ctx context.Context, q Querier, items []BulkUpdateProductPricesItem) error {
 	params := BulkUpdateProductPricesParams{
 		Column1: make([]int32, len(items)),
@@ -52,6 +54,7 @@ type BulkUpdateProductNamesItem struct {
 	Name string
 }
 
+// BulkUpdateProductNamesBatch converts a slice of BulkUpdateProductNamesItem into BulkUpdateProductNamesParams and calls BulkUpdateProductNames.
 func BulkUpdateProductNamesBatch(ctx context.Context, q Querier, items []BulkUpdateProductNamesItem) error {
 	params := BulkUpdateProductNamesParams{
 		Ids:   make([]int32, len(items)),

@@ -41,6 +41,7 @@ type {{.ItemStruct}} struct {
 {{- end}}
 }
 {{end}}
+// {{.FuncName}} converts a slice of {{itemType .}} into {{.ParamsStruct}} and calls {{.QueryName}}.
 {{- if eq $.Style "function"}}
 {{- if $.EmitInterface}}
 func {{.FuncName}}(ctx context.Context, q Querier, items []{{itemType .}}) {{returnSig .}} {

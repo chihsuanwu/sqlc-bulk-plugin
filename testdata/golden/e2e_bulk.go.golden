@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// BulkUpdateOrdersBatch converts a slice of Order into BulkUpdateOrdersParams and calls BulkUpdateOrders.
 func BulkUpdateOrdersBatch(ctx context.Context, q Querier, items []Order) error {
 	params := BulkUpdateOrdersParams{
 		Column1: make([]int32, len(items)),
@@ -34,6 +35,7 @@ type BulkUpdateItemPricesItem struct {
 	Price int32
 }
 
+// BulkUpdateItemPricesBatch converts a slice of BulkUpdateItemPricesItem into BulkUpdateItemPricesParams and calls BulkUpdateItemPrices.
 func BulkUpdateItemPricesBatch(ctx context.Context, q Querier, items []BulkUpdateItemPricesItem) error {
 	params := BulkUpdateItemPricesParams{
 		Ids:    make([]int32, len(items)),
@@ -51,6 +53,7 @@ type UpsertItemsItem struct {
 	Price int32
 }
 
+// UpsertItemsBatch converts a slice of UpsertItemsItem into UpsertItemsParams and calls UpsertItems.
 func UpsertItemsBatch(ctx context.Context, q Querier, items []UpsertItemsItem) error {
 	params := UpsertItemsParams{
 		Column1: make([]string, len(items)),
@@ -72,6 +75,7 @@ type UpsertOrdersItem struct {
 	OrderedAt pgtype.Timestamptz
 }
 
+// UpsertOrdersBatch converts a slice of UpsertOrdersItem into UpsertOrdersParams and calls UpsertOrders.
 func UpsertOrdersBatch(ctx context.Context, q Querier, items []UpsertOrdersItem) error {
 	params := UpsertOrdersParams{
 		Column1: make([]string, len(items)),
@@ -97,6 +101,7 @@ type BulkInsertItemsItem struct {
 	Price int32
 }
 
+// BulkInsertItemsBatch converts a slice of BulkInsertItemsItem into BulkInsertItemsParams and calls BulkInsertItems.
 func BulkInsertItemsBatch(ctx context.Context, q Querier, items []BulkInsertItemsItem) ([]int32, error) {
 	params := BulkInsertItemsParams{
 		Column1: make([]string, len(items)),
@@ -109,6 +114,7 @@ func BulkInsertItemsBatch(ctx context.Context, q Querier, items []BulkInsertItem
 	return q.BulkInsertItems(ctx, params)
 }
 
+// BulkUpdateEventsBatch converts a slice of Event into BulkUpdateEventsParams and calls BulkUpdateEvents.
 func BulkUpdateEventsBatch(ctx context.Context, q Querier, items []Event) error {
 	params := BulkUpdateEventsParams{
 		Column1: make([]pgtype.UUID, len(items)),
@@ -130,6 +136,7 @@ type UpsertItemsNullifItem struct {
 	Price int32
 }
 
+// UpsertItemsNullifBatch converts a slice of UpsertItemsNullifItem into UpsertItemsNullifParams and calls UpsertItemsNullif.
 func UpsertItemsNullifBatch(ctx context.Context, q Querier, items []UpsertItemsNullifItem) error {
 	params := UpsertItemsNullifParams{
 		Column1: make([]string, len(items)),
