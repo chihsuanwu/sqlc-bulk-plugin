@@ -50,5 +50,6 @@ go test -tags e2e -update -run TestE2E .
 - `singularize()` uses exception maps (`alreadySingular`, `irregularPlurals`) to handle words like `status`, `bus`, `analyses` correctly before applying suffix rules.
 - Three generation styles (`function`/`method`/`interface`) controlled by `style` option. Default is `function` (standalone function accepting `Querier`).
 - `:many` with single-column `RETURNING` is supported; return type resolved from `Query.Columns`.
-- Assumes default sqlc settings (no rename/overrides support).
+- `emit_interface` plugin option controls whether generated `function` style uses `Querier` (true, default) or `*Queries` (false). Must match sqlc's `emit_interface` setting. `interface` style requires `emit_interface: true`.
+- Assumes default sqlc settings for other options (no rename/overrides support).
 - See SPEC.md for full design rationale. Historical spike results in docs/.

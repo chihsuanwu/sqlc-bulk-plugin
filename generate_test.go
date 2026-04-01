@@ -84,6 +84,68 @@ func TestGenerateInvalidStyle(t *testing.T) {
 	}
 }
 
+func TestGenerateFunctionWithoutInterface(t *testing.T) {
+	emitFalse := false
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction, EmitInterface: &emitFalse})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       buildTestCatalog(),
+		Queries:       buildTestQueries(),
+	}
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+	if len(resp.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(resp.Files))
+	}
+	got := string(resp.Files[0].Contents)
+	if strings.Contains(got, "q Querier") {
+		t.Error("expected no Querier parameter when emit_interface is false")
+	}
+	if !strings.Contains(got, "q *Queries") {
+		t.Error("expected *Queries parameter when emit_interface is false")
+	}
+}
+
+func TestGenerateInterfaceWithoutInterfaceError(t *testing.T) {
+	emitFalse := false
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleInterface, EmitInterface: &emitFalse})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       buildTestCatalog(),
+		Queries:       buildTestQueries(),
+	}
+	_, err := generate(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for interface style with emit_interface: false, got nil")
+	}
+	if !strings.Contains(err.Error(), "emit_interface") {
+		t.Errorf("error should mention emit_interface, got: %v", err)
+	}
+}
+
+func TestGenerateMethodWithoutInterface(t *testing.T) {
+	emitFalse := false
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleMethod, EmitInterface: &emitFalse})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       buildTestCatalog(),
+		Queries:       buildTestQueries(),
+	}
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+	if len(resp.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(resp.Files))
+	}
+	got := string(resp.Files[0].Contents)
+	if strings.Contains(got, "Querier") {
+		t.Error("expected no Querier reference in method style with emit_interface: false")
+	}
+}
+
 func TestGenerateEmptyQueryList(t *testing.T) {
 	req := &plugin.GenerateRequest{
 		PluginOptions: []byte(`{"package": "db"}`),

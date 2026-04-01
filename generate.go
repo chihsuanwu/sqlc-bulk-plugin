@@ -39,8 +39,16 @@ const (
 )
 
 type pluginOptions struct {
-	Package string `json:"package"`
-	Style   string `json:"style"`
+	Package       string `json:"package"`
+	Style         string `json:"style"`
+	EmitInterface *bool  `json:"emit_interface"`
+}
+
+func (o pluginOptions) emitInterface() bool {
+	if o.EmitInterface == nil {
+		return true // default: backward compatible
+	}
+	return *o.EmitInterface
 }
 
 func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.GenerateResponse, error) {
@@ -58,6 +66,10 @@ func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 		opts.Style = styleFunction
 	default:
 		return nil, fmt.Errorf("invalid style %q: must be %q, %q, or %q", opts.Style, styleFunction, styleMethod, styleInterface)
+	}
+
+	if opts.Style == styleInterface && !opts.emitInterface() {
+		return nil, fmt.Errorf("style %q requires emit_interface to be true (BulkQuerier embeds Querier)", styleInterface)
 	}
 
 	var queries []bulkQuery
@@ -85,7 +97,7 @@ func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 		return &plugin.GenerateResponse{}, nil
 	}
 
-	content, err := renderTemplate(opts.Package, opts.Style, queries)
+	content, err := renderTemplate(opts.Package, opts.Style, opts.emitInterface(), queries)
 	if err != nil {
 		return nil, err
 	}

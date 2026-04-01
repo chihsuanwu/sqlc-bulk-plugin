@@ -71,6 +71,7 @@ sql:
         options:
           package: db       # Must match gen.go.package
           style: function   # "function" (default) | "method" | "interface"
+          emit_interface: true  # Must match gen.go.emit_interface (default: true)
 ```
 
 ### 3. Annotate queries
@@ -136,9 +137,11 @@ Control how the adapter is generated with the `style` option:
 
 | `style` | Generates | Best for |
 |---|---|---|
-| `function` (default) | Standalone function: `BulkXxxBatch(ctx, q, items)` | Projects using `Querier` interface (`emit_interface: true`) |
+| `function` (default) | Standalone function: `BulkXxxBatch(ctx, q, items)` | Any project (adapts to `emit_interface` setting) |
 | `method` | Method on `*Queries`: `q.BulkXxxBatch(ctx, items)` | Projects using `*Queries` directly |
-| `interface` | Method + `BulkQuerier` interface (embeds `Querier`) | Projects willing to adopt a combined interface |
+| `interface` | Method + `BulkQuerier` interface (embeds `Querier`) | Projects willing to adopt a combined interface (requires `emit_interface: true`) |
+
+When `emit_interface: true` (default), `function` style accepts `q Querier`. When `emit_interface: false`, it accepts `q *Queries` instead.
 
 ## Supported Types
 

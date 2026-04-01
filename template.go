@@ -42,7 +42,11 @@ type {{.ItemStruct}} struct {
 }
 {{end}}
 {{- if eq $.Style "function"}}
+{{- if $.EmitInterface}}
 func {{.FuncName}}(ctx context.Context, q Querier, items []{{itemType .}}) {{returnSig .}} {
+{{- else}}
+func {{.FuncName}}(ctx context.Context, q *Queries, items []{{itemType .}}) {{returnSig .}} {
+{{- end}}
 {{- else}}
 func (q *Queries) {{.FuncName}}(ctx context.Context, items []{{itemType .}}) {{returnSig .}} {
 {{- end}}
@@ -72,13 +76,14 @@ var _ BulkQuerier = (*Queries)(nil)
 `
 
 type templateData struct {
-	Package   string
-	Style     string
-	Queries   []bulkQuery
-	HasPgtype bool
+	Package       string
+	Style         string
+	EmitInterface bool
+	Queries       []bulkQuery
+	HasPgtype     bool
 }
 
-func renderTemplate(pkg string, style string, queries []bulkQuery) ([]byte, error) {
+func renderTemplate(pkg string, style string, emitInterface bool, queries []bulkQuery) ([]byte, error) {
 	funcMap := template.FuncMap{
 		"itemType":  itemType,
 		"returnSig": returnSig,
@@ -89,10 +94,11 @@ func renderTemplate(pkg string, style string, queries []bulkQuery) ([]byte, erro
 	}
 
 	data := templateData{
-		Package:   pkg,
-		Style:     style,
-		Queries:   queries,
-		HasPgtype: needsPgtype(queries),
+		Package:       pkg,
+		Style:         style,
+		EmitInterface: emitInterface,
+		Queries:       queries,
+		HasPgtype:     needsPgtype(queries),
 	}
 
 	var buf bytes.Buffer
