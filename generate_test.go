@@ -819,6 +819,9 @@ func TestGenerateCustomEnum(t *testing.T) {
 						},
 					},
 				},
+				Enums: []*plugin.Enum{
+					{Name: "cancelled_source_enum", Vals: []string{"manual", "auto"}},
+				},
 			},
 		},
 	}
@@ -895,6 +898,9 @@ func TestGenerateCustomEnumNullable(t *testing.T) {
 						},
 					},
 				},
+				Enums: []*plugin.Enum{
+					{Name: "event_status", Vals: []string{"active", "cancelled"}},
+				},
 			},
 		},
 	}
@@ -949,6 +955,148 @@ WHERE e.id = u.id`,
 	// Conversion: item.Status.EventStatus (NullEventStatus → EventStatus)
 	if !strings.Contains(got, "item.Status.EventStatus") {
 		t.Errorf("expected .EventStatus accessor for nullable enum conversion, got:\n%s", got)
+	}
+}
+
+// TestGenerateUnknownBuiltinType tests that unknown built-in PG types (not in pgTypeMap
+// and not catalog enums) fallback to pgtype.PascalCase instead of being misidentified as enums.
+func TestGenerateUnknownBuiltinType(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "schedules"},
+						Columns: []*plugin.Column{
+							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "duration", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "interval"}},
+							{Name: "host", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "inet"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkUpdateSchedules",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk update"},
+				Text: `UPDATE schedules AS s SET
+    duration = u.duration,
+    host     = u.host
+FROM (
+    SELECT
+        UNNEST($1::int[])      AS id,
+        UNNEST($2::interval[]) AS duration,
+        UNNEST($3::inet[])     AS host
+) AS u
+WHERE s.id = u.id`,
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					makeParam(2, "", "interval", true),
+					makeParam(3, "", "inet", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Full column match → model struct reuse
+	if !strings.Contains(got, "items []Schedule") {
+		t.Errorf("expected model struct reuse ([]Schedule), got:\n%s", got)
+	}
+	// Should use pgtype.Interval, not Interval (enum) or interface{}
+	if !strings.Contains(got, "[]pgtype.Interval") {
+		t.Errorf("expected []pgtype.Interval params type, got:\n%s", got)
+	}
+	if !strings.Contains(got, "[]pgtype.Inet") {
+		t.Errorf("expected []pgtype.Inet params type, got:\n%s", got)
+	}
+	// Direct assignment (base == nullable for pgtype types), no accessor
+	if strings.Contains(got, "interface{}") {
+		t.Errorf("unexpected interface{} fallback, got:\n%s", got)
+	}
+}
+
+// TestGenerateUnknownBuiltinPartialColumns tests unknown built-in types with partial column match
+// to verify Item struct fields use pgtype.PascalCase, not enum-style PascalCase.
+func TestGenerateUnknownBuiltinPartialColumns(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "schedules"},
+						Columns: []*plugin.Column{
+							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "name", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+							{Name: "duration", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "interval"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+	req := &plugin.GenerateRequest{
+		PluginOptions: opts,
+		Catalog:       catalog,
+		Queries: []*plugin.Query{
+			{
+				Name:     "BulkUpdateScheduleDurations",
+				Cmd:      ":exec",
+				Comments: []string{"@bulk update"},
+				Text: `UPDATE schedules AS s SET
+    duration = u.duration
+FROM (
+    SELECT
+        UNNEST($1::int[])      AS id,
+        UNNEST($2::interval[]) AS duration
+) AS u
+WHERE s.id = u.id`,
+				Params: []*plugin.Parameter{
+					makeParam(1, "", "int4", true),
+					makeParam(2, "", "interval", true),
+				},
+			},
+		},
+	}
+
+	resp, err := generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("generate() error: %v", err)
+	}
+
+	got := string(resp.Files[0].Contents)
+
+	// Partial column match → Item struct
+	if !strings.Contains(got, "BulkUpdateScheduleDurationsItem") {
+		t.Errorf("expected Item struct, got:\n%s", got)
+	}
+	// Item field should be pgtype.Interval, not Interval (enum-style)
+	if !strings.Contains(got, "Duration pgtype.Interval") {
+		t.Errorf("expected 'Duration pgtype.Interval' in Item struct, got:\n%s", got)
+	}
+	// Params element should also be pgtype.Interval
+	if !strings.Contains(got, "[]pgtype.Interval") {
+		t.Errorf("expected []pgtype.Interval params type, got:\n%s", got)
 	}
 }
 

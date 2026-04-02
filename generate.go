@@ -29,6 +29,7 @@ type bulkField struct {
 	GoType         string
 	ParamsElemType string
 	ConvertExpr    string
+	pgType         string // original PG type name, used for model struct nullable fixup
 }
 
 const (
@@ -71,6 +72,7 @@ func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 		return nil, fmt.Errorf("style %q requires emit_interface to be true (BulkQuerier embeds Querier)", styleInterface)
 	}
 
+	enumSet := catalogEnumSet(req.Catalog)
 	var queries []bulkQuery
 
 	for _, q := range req.Queries {
@@ -82,9 +84,9 @@ func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 		var err error
 
 		if isInsertQuery(q) {
-			bq, err = buildBulkInsertQuery(req.Catalog, q)
+			bq, err = buildBulkInsertQuery(req.Catalog, q, enumSet)
 		} else {
-			bq, err = buildBulkUpdateQuery(req.Catalog, q)
+			bq, err = buildBulkUpdateQuery(req.Catalog, q, enumSet)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("query %q: %w", q.Name, err)
@@ -111,7 +113,7 @@ func generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 	}, nil
 }
 
-func buildBulkUpdateQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, error) {
+func buildBulkUpdateQuery(catalog *plugin.Catalog, q *plugin.Query, enumSet map[string]bool) (bulkQuery, error) {
 	tableName, err := parseUpdateTable(q.Text)
 	if err != nil {
 		return bulkQuery{}, err
@@ -120,7 +122,7 @@ func buildBulkUpdateQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, 
 	if err != nil {
 		return bulkQuery{}, err
 	}
-	return buildBulkQueryFromAliases(catalog, q, tableName, aliases)
+	return buildBulkQueryFromAliases(catalog, q, tableName, aliases, enumSet)
 }
 
 // isInsertQuery returns true if the query is an INSERT-based query (upsert or insert).
@@ -129,16 +131,16 @@ func isInsertQuery(q *plugin.Query) bool {
 	return q.InsertIntoTable != nil && q.InsertIntoTable.Name != ""
 }
 
-func buildBulkInsertQuery(catalog *plugin.Catalog, q *plugin.Query) (bulkQuery, error) {
+func buildBulkInsertQuery(catalog *plugin.Catalog, q *plugin.Query, enumSet map[string]bool) (bulkQuery, error) {
 	tableName := q.InsertIntoTable.Name
 	aliases, err := parseUpsertAliases(q.Text)
 	if err != nil {
 		return bulkQuery{}, err
 	}
-	return buildBulkQueryFromAliases(catalog, q, tableName, aliases)
+	return buildBulkQueryFromAliases(catalog, q, tableName, aliases, enumSet)
 }
 
-func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableName string, aliases map[int]string) (bulkQuery, error) {
+func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableName string, aliases map[int]string, enumSet map[string]bool) (bulkQuery, error) {
 	table, err := findTable(catalog, tableName)
 	if err != nil {
 		return bulkQuery{}, err
@@ -164,9 +166,9 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 		// Use base types for Item struct fields, matching sqlc's params element types.
 		// UNNEST params are always base types (e.g. int32, not pgtype.Int4) regardless
 		// of catalog nullability. Null semantics are handled in SQL (e.g. NULLIF).
-		goType := resolveGoType(pgType, false)
+		goType := resolveGoType(pgType, false, enumSet)
 		var paramsElem string
-		if isCustomType(pgType) {
+		if isEnumType(pgType, enumSet) {
 			paramsElem = pascalCase(pgType)
 		} else {
 			paramsElem = pgTypeToParamsElemType(pgType)
@@ -189,6 +191,7 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 			GoType:         goType,
 			ParamsElemType: paramsElem,
 			ConvertExpr:    convertExpr,
+			pgType:         pgType,
 		})
 
 		paramColumnNames = append(paramColumnNames, alias)
@@ -204,18 +207,14 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 			if !ok || catalogCol.NotNull {
 				continue
 			}
-			pgType := ""
-			if q.Params[i].Column != nil && q.Params[i].Column.Type != nil {
-				pgType = q.Params[i].Column.Type.Name
-			}
-			goType := resolveGoType(pgType, true)
+			goType := resolveGoType(f.pgType, true, enumSet)
 			fieldAccess := "item." + f.ItemFieldName
 			fields[i].GoType = goType
 			fields[i].ConvertExpr = conversionExpr(fieldAccess, goType, f.ParamsElemType)
 		}
 	}
 
-	returnType, err := resolveReturnType(q)
+	returnType, err := resolveReturnType(q, enumSet)
 	if err != nil {
 		return bulkQuery{}, err
 	}
@@ -235,7 +234,7 @@ func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableNa
 
 // resolveReturnType determines the return type for the adapter function.
 // Returns empty string for :exec, "[]GoType" for :many with single-column RETURNING.
-func resolveReturnType(q *plugin.Query) (string, error) {
+func resolveReturnType(q *plugin.Query, enumSet map[string]bool) (string, error) {
 	if q.Cmd != ":many" {
 		return "", nil
 	}
@@ -249,7 +248,7 @@ func resolveReturnType(q *plugin.Query) (string, error) {
 	if col.Type == nil {
 		return "", fmt.Errorf(":many RETURNING column has no type information")
 	}
-	return "[]" + resolveGoType(col.Type.Name, !col.NotNull), nil
+	return "[]" + resolveGoType(col.Type.Name, !col.NotNull, enumSet), nil
 }
 
 // needsPgtype returns true if any query uses pgtype.* types.

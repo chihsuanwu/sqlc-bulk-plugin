@@ -53,14 +53,16 @@ func pgTypeToBaseGoType(pgType string) string {
 	if m, ok := pgTypeMap[pgType]; ok {
 		return m.baseGoType
 	}
-	return "interface{}"
+	// Unknown built-in type: assume pgtype.PascalCase (pgx naming convention).
+	// e.g. interval → pgtype.Interval, inet → pgtype.Inet
+	return "pgtype." + pascalCase(pgType)
 }
 
 func pgTypeToNullableGoType(pgType string) string {
 	if m, ok := pgTypeMap[pgType]; ok {
 		return m.nullableGoType
 	}
-	return "interface{}"
+	return "pgtype." + pascalCase(pgType)
 }
 
 // pgTypeToParamsElemType returns the element type inside sqlc's Params slices.
@@ -69,12 +71,11 @@ func pgTypeToParamsElemType(pgType string) string {
 	return pgTypeToBaseGoType(pgType)
 }
 
-// isCustomType returns true if the type is not a known built-in PostgreSQL type.
-// sqlc may leave the schema empty for both built-in and custom types,
-// so we check against the known type names instead.
-func isCustomType(pgType string) bool {
-	_, ok := pgTypeMap[pgType]
-	return !ok
+// isEnumType returns true if the type is a user-defined enum in the catalog.
+// Previously this was detected by absence from pgTypeMap, but that misidentified
+// unknown built-in types (e.g. interval, inet) as custom enums.
+func isEnumType(pgType string, enumSet map[string]bool) bool {
+	return enumSet[pgType]
 }
 
 // customGoType returns the Go type for a custom type (e.g. enum).
@@ -89,8 +90,8 @@ func customGoType(pgType string, nullable bool) string {
 
 // resolveGoType returns the Go type string for a PG type, handling both
 // built-in and custom types (enums).
-func resolveGoType(pgType string, nullable bool) string {
-	if isCustomType(pgType) {
+func resolveGoType(pgType string, nullable bool, enumSet map[string]bool) string {
+	if isEnumType(pgType, enumSet) {
 		return customGoType(pgType, nullable)
 	}
 	return pgTypeToGoType(pgType, nullable)

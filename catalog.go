@@ -34,6 +34,17 @@ func tableColumnMap(table *plugin.Table) map[string]*plugin.Column {
 	return m
 }
 
+// catalogEnumSet builds a set of enum type names from the catalog.
+func catalogEnumSet(catalog *plugin.Catalog) map[string]bool {
+	set := make(map[string]bool)
+	for _, s := range catalog.Schemas {
+		for _, e := range s.Enums {
+			set[e.Name] = true
+		}
+	}
+	return set
+}
+
 // isFullColumnMatch returns true if the param column names exactly match
 // all columns in the table (ignoring order).
 func isFullColumnMatch(tableColumns map[string]*plugin.Column, paramColumnNames []string) bool {

@@ -92,9 +92,9 @@ ON CONFLICT (id) DO UPDATE SET
 | `$1`, `$2`, ... | `Column1`, `Column2`, ... | `Query.Params[0].column.name` 為空 |
 | `@ids`, `@names`, ... | `Ids`, `Names`, ... | `Query.Params[0].column.name` 有值 |
 
-**Nullable 判斷：** 必須從 `Catalog` 中的 table column 定義取得（`not_null` 欄位）。`Query.Params[].column.not_null` 對 UNNEST 參數永遠為 `true`，不可使用。
+**Item struct 型別：** Item struct 的欄位一律使用 base type（如 `int32`、`string`），與 sqlc Params 的 slice element type 一致。UNNEST 參數的型別來自 `::type[]` annotation，與 catalog nullable 無關。Null 語意由 SQL 層處理（如 `NULLIF`）。
 
-**Nullable 型別轉換：** sqlc 的 Params 中 nullable 欄位可能用基本型別（如 `[]string`），但 model struct 用 `pgtype.Text`。複用 model struct 時，adapter 透過 pgtype accessor（如 `.String`、`.Int32`）處理轉換。
+**Model struct 複用時的型別轉換：** 當所有欄位與 table 完全匹配時，複用 sqlc 的 model struct。Model struct 的 nullable 欄位使用 `pgtype.*` 型別（由 catalog nullable 決定），adapter 透過 pgtype accessor（如 `.String`、`.Int32`）轉換為 Params 的 base type。
 
 ### FR-6　生成模式（`style` 參數）
 
@@ -167,7 +167,7 @@ UNNEST\(\$(\d+)::\w+(?:\[\])?\)
 | 風險 | 等級 | 對應方式 |
 |---|---|---|
 | sqlc protobuf schema 版本更新 | 低 | pin plugin-sdk-go 版本；升級時跑 golden test 確認 |
-| PG type mapping 不完整 | 中 | 先支援常見型別，其餘遇到再補，README 列出支援清單 |
+| PG type mapping 不完整 | 低 | 常見型別列於 `pgTypeMap`；未列入的內建型別 fallback 為 `pgtype.` + PascalCase（pgx 慣例）；custom enum 從 `Catalog.Schema.Enums` 正向識別 |
 | UNNEST alias 解析失敗（UPDATE） | 中 | SQL 不符合 regex 格式時報錯，提示調整 SQL |
 | INSERT column list 解析失敗（Upsert） | 低 | 省略 column list 時報錯 |
 | Param name → table column mapping 失敗 | 中 | 無法 match 時 fallback 為 NOT NULL |

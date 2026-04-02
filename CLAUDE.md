@@ -44,7 +44,7 @@ go test -tags e2e -update -run TestE2E .
 - UNNEST alias parsing always runs for UPDATE (even with `@param` syntax) because `column.name` is the param name, not the table column name.
 - For INSERT/Upsert, column names come from `INSERT INTO xxx (col1, col2, ...)` column list, not UNNEST aliases.
 - Item struct fields always use base types (matching sqlc's params element types). UNNEST params are always base types regardless of catalog nullability; null semantics are handled in SQL (e.g. NULLIF). Catalog nullability is only used when reusing the model struct (`UseModelStruct=true`), since sqlc's model struct uses nullable types.
-- Custom types (enums) are detected by checking if the type name is absent from the built-in PG type map, not by checking `Type.Schema` (sqlc leaves schema empty for both built-in and custom types).
+- Custom types (enums) are positively identified from `Catalog.Schema.Enums`, not by absence from the built-in PG type map. Unknown built-in types (not in pgTypeMap and not in catalog enums) fallback to `pgtype.` + PascalCase (pgx naming convention).
 - UNNEST regex patterns tolerate whitespace inside parentheses and around `::` (e.g. `UNNEST( $1 :: int[] )`).
 - UPDATE table regex supports schema-qualified names (e.g. `UPDATE public.products` extracts `products`).
 - `singularize()` uses exception maps (`alreadySingular`, `irregularPlurals`) to handle words like `status`, `bus`, `analyses` correctly before applying suffix rules.

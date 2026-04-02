@@ -32,8 +32,12 @@ func TestPgTypeToGoType(t *testing.T) {
 		{"numeric", true, "pgtype.Numeric"},
 		{"decimal", false, "pgtype.Numeric"},
 		{"decimal", true, "pgtype.Numeric"},
-		{"unknown_type", false, "interface{}"},
-		{"unknown_type", true, "interface{}"},
+		{"unknown_type", false, "pgtype.UnknownType"},
+		{"unknown_type", true, "pgtype.UnknownType"},
+		{"interval", false, "pgtype.Interval"},
+		{"interval", true, "pgtype.Interval"},
+		{"inet", false, "pgtype.Inet"},
+		{"inet", true, "pgtype.Inet"},
 	}
 
 	for _, tt := range tests {
@@ -50,17 +54,19 @@ func TestPgTypeToGoType(t *testing.T) {
 	}
 }
 
-func TestIsCustomType(t *testing.T) {
-	builtins := []string{"int4", "text", "bool", "uuid", "json", "jsonb", "bytea", "numeric", "decimal", "timestamptz"}
+func TestIsEnumType(t *testing.T) {
+	enumSet := map[string]bool{"order_status": true, "my_enum": true}
+
+	builtins := []string{"int4", "text", "bool", "uuid", "json", "jsonb", "bytea", "numeric", "decimal", "timestamptz", "interval", "inet"}
 	for _, typ := range builtins {
-		if isCustomType(typ) {
-			t.Errorf("isCustomType(%q) = true, want false", typ)
+		if isEnumType(typ, enumSet) {
+			t.Errorf("isEnumType(%q) = true, want false", typ)
 		}
 	}
-	customs := []string{"order_status", "my_enum"}
-	for _, typ := range customs {
-		if !isCustomType(typ) {
-			t.Errorf("isCustomType(%q) = false, want true", typ)
+	enums := []string{"order_status", "my_enum"}
+	for _, typ := range enums {
+		if !isEnumType(typ, enumSet) {
+			t.Errorf("isEnumType(%q) = false, want true", typ)
 		}
 	}
 }
