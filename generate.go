@@ -137,7 +137,19 @@ func buildBulkInsertQuery(catalog *plugin.Catalog, q *plugin.Query, enumSet map[
 	if err != nil {
 		return bulkQuery{}, err
 	}
-	return buildBulkQueryFromAliases(catalog, q, tableName, aliases, enumSet)
+	bq, err := buildBulkQueryFromAliases(catalog, q, tableName, aliases, enumSet)
+	if err != nil {
+		return bulkQuery{}, err
+	}
+	// A single-column bulk insert/upsert gains nothing from a row-oriented
+	// adapter: the generated XxxBatch would be a thin pass-through wrapping
+	// a []baseType parameter that callers can already hand to the sqlc
+	// method directly. Refuse with a clear message instead of generating
+	// pointless ceremony.
+	if len(bq.Fields) == 1 {
+		return bulkQuery{}, fmt.Errorf("query %q: @bulk has no effect on single-column bulk queries; remove the annotation and call %s directly", q.Name, q.Name)
+	}
+	return bq, nil
 }
 
 func buildBulkQueryFromAliases(catalog *plugin.Catalog, q *plugin.Query, tableName string, aliases map[int]string, enumSet map[string]bool) (bulkQuery, error) {

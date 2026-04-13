@@ -159,6 +159,8 @@ UNNEST\(\$(\d+)::\w+(?:\[\])?\)
 
 - `rename`、`overrides`、`emit_pointers_for_null_types` 等非預設 sqlc 設定不支援（plugin 無法感知 `gen.go` 設定）
 - `:many` + 多欄位 `RETURNING` 不支援（單欄位 `RETURNING` 已支援）
+- **單欄 bulk insert/upsert 拒絕生成**：只有一個 UNNEST 欄位的 `@bulk` insert / upsert 會 plugin 報錯。原因是生成的 adapter 會是 thin pass-through —— sqlc 原本的 method 就吃 `[]baseType`，再包一層 row-oriented wrapper 沒有價值。使用者應移除 `@bulk` annotation 直接呼叫 sqlc method。UPDATE 不受此限制（UPDATE 最少需要 id + 一個值欄，自然 ≥2）
+- **Querier interface doc-comment 汙染**：sqlc 從 `-- name:` 上方的註解區塊產生 method doc comment。當 `@bulk` annotation 寫在 `-- name:` 上一行時，sqlc 會把 `@bulk` 當成 doc comment 的開頭，導致 IDE hover 顯示 `// @bulk` 而非人類可讀的 query 名稱。純粹是外觀問題，不影響生成結果或 runtime 行為。可能的解法包括：將 annotation 移到 `-- name:` 同一行尾端（需驗證 sqlc parser 相容性）、post-process 移除 `// @bulk` 行、或改用 `sqlc.yaml` plugin options 取代 comment annotation
 
 ---
 

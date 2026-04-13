@@ -9,6 +9,9 @@ import (
 
 // BulkUpdateOrdersBatch converts a slice of Order into BulkUpdateOrdersParams and calls Querier.BulkUpdateOrders.
 func BulkUpdateOrdersBatch(ctx context.Context, q Querier, items []Order) error {
+	if len(items) == 0 {
+		return nil
+	}
 	params := BulkUpdateOrdersParams{
 		Column1: make([]int32, len(items)),
 		Column2: make([]string, len(items)),

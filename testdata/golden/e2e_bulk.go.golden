@@ -9,6 +9,9 @@ import (
 
 // BulkUpdateOrdersBatch converts a slice of Order into BulkUpdateOrdersParams and calls Querier.BulkUpdateOrders.
 func BulkUpdateOrdersBatch(ctx context.Context, q Querier, items []Order) error {
+	if len(items) == 0 {
+		return nil
+	}
 	params := BulkUpdateOrdersParams{
 		Column1: make([]int32, len(items)),
 		Column2: make([]string, len(items)),
@@ -37,6 +40,9 @@ type BulkUpdateItemPricesItem struct {
 
 // BulkUpdateItemPricesBatch converts a slice of BulkUpdateItemPricesItem into BulkUpdateItemPricesParams and calls Querier.BulkUpdateItemPrices.
 func BulkUpdateItemPricesBatch(ctx context.Context, q Querier, items []BulkUpdateItemPricesItem) error {
+	if len(items) == 0 {
+		return nil
+	}
 	params := BulkUpdateItemPricesParams{
 		Ids:    make([]int32, len(items)),
 		Prices: make([]int32, len(items)),
@@ -55,6 +61,9 @@ type UpsertItemsItem struct {
 
 // UpsertItemsBatch converts a slice of UpsertItemsItem into UpsertItemsParams and calls Querier.UpsertItems.
 func UpsertItemsBatch(ctx context.Context, q Querier, items []UpsertItemsItem) error {
+	if len(items) == 0 {
+		return nil
+	}
 	params := UpsertItemsParams{
 		Column1: make([]string, len(items)),
 		Column2: make([]int32, len(items)),
@@ -77,6 +86,9 @@ type UpsertOrdersItem struct {
 
 // UpsertOrdersBatch converts a slice of UpsertOrdersItem into UpsertOrdersParams and calls Querier.UpsertOrders.
 func UpsertOrdersBatch(ctx context.Context, q Querier, items []UpsertOrdersItem) error {
+	if len(items) == 0 {
+		return nil
+	}
 	params := UpsertOrdersParams{
 		Column1: make([]string, len(items)),
 		Column2: make([]int32, len(items)),
@@ -103,6 +115,9 @@ type BulkInsertItemsItem struct {
 
 // BulkInsertItemsBatch converts a slice of BulkInsertItemsItem into BulkInsertItemsParams and calls Querier.BulkInsertItems.
 func BulkInsertItemsBatch(ctx context.Context, q Querier, items []BulkInsertItemsItem) ([]int32, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
 	params := BulkInsertItemsParams{
 		Column1: make([]string, len(items)),
 		Column2: make([]int32, len(items)),
@@ -116,6 +131,9 @@ func BulkInsertItemsBatch(ctx context.Context, q Querier, items []BulkInsertItem
 
 // BulkUpdateEventsBatch converts a slice of Event into BulkUpdateEventsParams and calls Querier.BulkUpdateEvents.
 func BulkUpdateEventsBatch(ctx context.Context, q Querier, items []Event) error {
+	if len(items) == 0 {
+		return nil
+	}
 	params := BulkUpdateEventsParams{
 		Column1: make([]pgtype.UUID, len(items)),
 		Column2: make([][]byte, len(items)),
@@ -138,6 +156,9 @@ type UpsertItemsNullifItem struct {
 
 // UpsertItemsNullifBatch converts a slice of UpsertItemsNullifItem into UpsertItemsNullifParams and calls Querier.UpsertItemsNullif.
 func UpsertItemsNullifBatch(ctx context.Context, q Querier, items []UpsertItemsNullifItem) error {
+	if len(items) == 0 {
+		return nil
+	}
 	params := UpsertItemsNullifParams{
 		Column1: make([]string, len(items)),
 		Column2: make([]int32, len(items)),

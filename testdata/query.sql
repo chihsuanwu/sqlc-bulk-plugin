@@ -44,7 +44,8 @@ VALUES (
 ON CONFLICT (name) DO UPDATE SET
     price = EXCLUDED.price;
 
--- 4. Upsert, SELECT format
+-- 4. Upsert, SELECT format — locks in INSERT ... SELECT UNNEST support
+-- (as opposed to INSERT ... VALUES (UNNEST(...))).
 -- @bulk
 -- name: UpsertOrders :exec
 INSERT INTO orders (customer, amount, note, is_paid, status, ordered_at)

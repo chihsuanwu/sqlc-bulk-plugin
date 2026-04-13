@@ -1170,6 +1170,11 @@ VALUES (
 }
 
 // TestGenerateUpsertSelectUNNEST tests SELECT UNNEST format (no VALUES clause).
+// TestGenerateUpsertSelectUNNEST locks in support for the INSERT ... SELECT
+// UNNEST form (as opposed to INSERT ... VALUES (UNNEST(...))). The SELECT
+// form currently works because the FR-9 UNNEST regex is substring-based and
+// doesn't care whether the UNNEST sits inside VALUES or SELECT; this test
+// ensures a future parser rewrite doesn't regress that coverage.
 func TestGenerateUpsertSelectUNNEST(t *testing.T) {
 	catalog := &plugin.Catalog{
 		DefaultSchema: "public",
@@ -1239,7 +1244,12 @@ SET source = EXCLUDED.source`,
 }
 
 // TestGenerateUpsertSelectUNNESTSingleColumn tests SELECT UNNEST with a single column.
-func TestGenerateUpsertSelectUNNESTSingleColumn(t *testing.T) {
+// TestGenerateSingleColumnInsertError verifies that @bulk on a single-column
+// bulk insert/upsert is rejected with a clear error. The generated adapter
+// would be a pointless wrapper around the sqlc method (which already takes a
+// flat []baseType parameter), so the plugin refuses and tells the user to
+// call the sqlc method directly. Covers both VALUES and SELECT INSERT forms.
+func TestGenerateSingleColumnInsertError(t *testing.T) {
 	catalog := &plugin.Catalog{
 		DefaultSchema: "public",
 		Schemas: []*plugin.Schema{
@@ -1258,42 +1268,59 @@ func TestGenerateUpsertSelectUNNESTSingleColumn(t *testing.T) {
 		},
 	}
 
-	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
-	req := &plugin.GenerateRequest{
-		PluginOptions: opts,
-		Catalog:       catalog,
-		Queries: []*plugin.Query{
-			{
-				Name:     "BulkUpsertTRANotes",
-				Cmd:      ":exec",
-				Comments: []string{"@bulk upsert"},
-				Text: `INSERT INTO tra_notes (note_text)
+	cases := []struct {
+		name      string
+		queryText string
+	}{
+		{
+			name: "select_unnest_form",
+			queryText: `INSERT INTO tra_notes (note_text)
 SELECT UNNEST($1::text[])
 ON CONFLICT (note_text) DO UPDATE SET note_text = EXCLUDED.note_text`,
-				InsertIntoTable: &plugin.Identifier{Name: "tra_notes"},
-				Params: []*plugin.Parameter{
-					makeParam(1, "", "text", true),
-				},
-			},
+		},
+		{
+			name: "values_unnest_form",
+			queryText: `INSERT INTO tra_notes (note_text)
+VALUES (UNNEST($1::text[]))
+ON CONFLICT (note_text) DO UPDATE SET note_text = EXCLUDED.note_text`,
 		},
 	}
 
-	resp, err := generate(context.Background(), req)
-	if err != nil {
-		t.Fatalf("generate() error: %v", err)
-	}
-	if len(resp.Files) != 1 {
-		t.Fatalf("expected 1 file, got %d", len(resp.Files))
-	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+			req := &plugin.GenerateRequest{
+				PluginOptions: opts,
+				Catalog:       catalog,
+				Queries: []*plugin.Query{
+					{
+						Name:            "BulkUpsertTRANotes",
+						Cmd:             ":exec",
+						Comments:        []string{"@bulk"},
+						Text:            tc.queryText,
+						InsertIntoTable: &plugin.Identifier{Name: "tra_notes"},
+						Params: []*plugin.Parameter{
+							makeParam(1, "", "text", true),
+						},
+					},
+				},
+			}
 
-	got := string(resp.Files[0].Contents)
-
-	// Partial column (only note_text, not id) → Item struct
-	if !strings.Contains(got, "BulkUpsertTRANotesItem") {
-		t.Errorf("expected Item struct for partial columns, got:\n%s", got)
-	}
-	if !strings.Contains(got, "NoteText") {
-		t.Errorf("expected NoteText field, got:\n%s", got)
+			_, err := generate(context.Background(), req)
+			if err == nil {
+				t.Fatal("expected error for single-column bulk insert, got nil")
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "BulkUpsertTRANotes") {
+				t.Errorf("error should name the query, got: %v", err)
+			}
+			if !strings.Contains(msg, "single-column") {
+				t.Errorf("error should mention single-column, got: %v", err)
+			}
+			if !strings.Contains(msg, "@bulk") {
+				t.Errorf("error should mention @bulk, got: %v", err)
+			}
+		})
 	}
 }
 
@@ -1461,6 +1488,7 @@ func TestGenerateManyReturningMethod(t *testing.T) {
 						Columns: []*plugin.Column{
 							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int8"}},
 							{Name: "name", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+							{Name: "price", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
 						},
 					},
 				},
@@ -1477,12 +1505,13 @@ func TestGenerateManyReturningMethod(t *testing.T) {
 				Name:     "BulkInsertItems",
 				Cmd:      ":many",
 				Comments: []string{"@bulk"},
-				Text: `INSERT INTO items (name)
-VALUES (UNNEST($1::text[]))
+				Text: `INSERT INTO items (name, price)
+VALUES (UNNEST($1::text[]), UNNEST($2::int[]))
 RETURNING id`,
 				InsertIntoTable: &plugin.Identifier{Name: "items"},
 				Params: []*plugin.Parameter{
 					makeParam(1, "", "text", true),
+					makeParam(2, "", "int4", true),
 				},
 				Columns: []*plugin.Column{
 					{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int8"}},
@@ -1508,7 +1537,11 @@ RETURNING id`,
 	}
 }
 
-// TestGenerateManyMultiColumnError tests that :many with multiple RETURNING columns errors.
+// TestGenerateManyMultiColumnError locks in the graceful error produced when
+// :many has multiple RETURNING columns. The message must name the query,
+// state "not yet supported" (so this path is never silently skipped), and
+// report the observed column count — these three properties let consumers
+// distinguish this unsupported case from a parse error or crash.
 func TestGenerateManyMultiColumnError(t *testing.T) {
 	opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
 	req := &plugin.GenerateRequest{
@@ -1539,8 +1572,18 @@ RETURNING id, name`,
 	if err == nil {
 		t.Fatal("expected error for multi-column RETURNING, got nil")
 	}
-	if !strings.Contains(err.Error(), "multiple RETURNING columns") {
+	msg := err.Error()
+	if !strings.Contains(msg, "BulkInsertReturningMulti") {
+		t.Errorf("error should name the query, got: %v", err)
+	}
+	if !strings.Contains(msg, "multiple RETURNING columns") {
 		t.Errorf("error should mention multiple RETURNING columns, got: %v", err)
+	}
+	if !strings.Contains(msg, "not yet supported") {
+		t.Errorf("error should mention not yet supported, got: %v", err)
+	}
+	if !strings.Contains(msg, "got 2 columns") {
+		t.Errorf("error should report the observed column count, got: %v", err)
 	}
 }
 
@@ -1597,6 +1640,123 @@ WHERE t.id = u.id`,
 	if strings.Contains(got, "pgtype") {
 		t.Errorf("expected no pgtype import for all-not-null basic types, got:\n%s", got)
 	}
+}
+
+// TestGenerateEmptyInputGuard verifies that generated batch functions include
+// a len(items) == 0 early return. For :exec variants the guard returns nil;
+// for :many variants it returns nil, nil (nil slice + nil error).
+func TestGenerateEmptyInputGuard(t *testing.T) {
+	catalog := &plugin.Catalog{
+		DefaultSchema: "public",
+		Schemas: []*plugin.Schema{
+			{
+				Name: "public",
+				Tables: []*plugin.Table{
+					{
+						Rel: &plugin.Identifier{Name: "tags"},
+						Columns: []*plugin.Column{
+							{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							{Name: "label", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("exec_variant_returns_nil", func(t *testing.T) {
+		opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+		req := &plugin.GenerateRequest{
+			PluginOptions: opts,
+			Catalog:       catalog,
+			Queries: []*plugin.Query{
+				{
+					Name:     "BulkUpdateTags",
+					Cmd:      ":exec",
+					Comments: []string{"@bulk"},
+					Text: `UPDATE tags AS t SET
+    label = u.label
+FROM (
+    SELECT
+        UNNEST($1::int[])  AS id,
+        UNNEST($2::text[]) AS label
+) AS u
+WHERE t.id = u.id`,
+					Params: []*plugin.Parameter{
+						makeParam(1, "", "int4", true),
+						makeParam(2, "", "text", true),
+					},
+				},
+			},
+		}
+
+		resp, err := generate(context.Background(), req)
+		if err != nil {
+			t.Fatalf("generate() error: %v", err)
+		}
+		got := string(resp.Files[0].Contents)
+
+		if !strings.Contains(got, "if len(items) == 0 {\n\t\treturn nil\n\t}") {
+			t.Errorf("expected :exec variant to contain empty-input guard returning nil, got:\n%s", got)
+		}
+	})
+
+	t.Run("many_variant_returns_nil_nil", func(t *testing.T) {
+		// The test table needs a second column because single-column bulk
+		// inserts are rejected with an error — see TestGenerateSingleColumnInsertError.
+		manyCatalog := &plugin.Catalog{
+			DefaultSchema: "public",
+			Schemas: []*plugin.Schema{
+				{
+					Name: "public",
+					Tables: []*plugin.Table{
+						{
+							Rel: &plugin.Identifier{Name: "tags"},
+							Columns: []*plugin.Column{
+								{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+								{Name: "label", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "text"}},
+								{Name: "weight", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		opts, _ := json.Marshal(pluginOptions{Package: "db", Style: styleFunction})
+		req := &plugin.GenerateRequest{
+			PluginOptions: opts,
+			Catalog:       manyCatalog,
+			Queries: []*plugin.Query{
+				{
+					Name:     "BulkInsertTags",
+					Cmd:      ":many",
+					Comments: []string{"@bulk"},
+					Text: `INSERT INTO tags (label, weight)
+VALUES (UNNEST($1::text[]), UNNEST($2::int[]))
+RETURNING id`,
+					InsertIntoTable: &plugin.Identifier{Name: "tags"},
+					Params: []*plugin.Parameter{
+						makeParam(1, "", "text", true),
+						makeParam(2, "", "int4", true),
+					},
+					Columns: []*plugin.Column{
+						{Name: "id", NotNull: true, Type: &plugin.Identifier{Schema: "pg_catalog", Name: "int4"}},
+					},
+				},
+			},
+		}
+
+		resp, err := generate(context.Background(), req)
+		if err != nil {
+			t.Fatalf("generate() error: %v", err)
+		}
+		got := string(resp.Files[0].Contents)
+
+		if !strings.Contains(got, "if len(items) == 0 {\n\t\treturn nil, nil\n\t}") {
+			t.Errorf("expected :many variant to contain empty-input guard returning nil, nil, got:\n%s", got)
+		}
+	})
 }
 
 func buildTestRequestWithStyle(style string) *plugin.GenerateRequest {

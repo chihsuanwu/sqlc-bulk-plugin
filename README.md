@@ -173,6 +173,7 @@ If your INSERT needs `RETURNING` (e.g. `RETURNING id`), `:copyfrom` doesn't supp
 
 - PostgreSQL + pgx/v5 only
 - `:many` with multiple `RETURNING` columns not yet supported (single column works)
+- Single-column bulk insert/upsert is rejected — use the sqlc-generated method directly instead. The generated adapter would be a thin pass-through with no added value, so the plugin errors out with a helpful message rather than produce pointless ceremony. UPDATE is unaffected (always needs at least id + value).
 - Assumes default sqlc settings (`rename`, `overrides`, `emit_pointers_for_null_types` not yet supported)
 - Process plugin only (no WASM)
 

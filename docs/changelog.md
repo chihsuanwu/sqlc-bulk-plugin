@@ -9,3 +9,7 @@
 - **v0.7 → v0.8**：Phase 1 實作完成；修正 FR-7——sqlc 會將 `@param` 轉為 `$N` in Query.Text，UNNEST alias 解析永遠需要執行
 - **v0.8 → v0.9**：重新設計 FR-6——新增 `style` 參數，支援三種生成模式（`function`/`method`/`interface`），解決 `Querier` interface 整合問題
 - **v0.9 → v1.0**：新增 FR-3 Bulk Upsert 實作規格——根據實際專案 SQL 調查確立 `VALUES (UNNEST(...))` 為主要支援格式；新增 FR-9 INSERT column list 解析；`SELECT * FROM UNNEST(...)` 格式列為已知限制；確認 `NULLIF(UNNEST(...))` 等函式包裝在 VALUES 格式中可正常運作
+- **v1.0 → v1.1**：根據實際專案導入經驗調整行為：
+  - 生成的 `XxxBatch` 加入 empty-input guard —— `if len(items) == 0` 直接 early return（`:exec` 回 `nil`，`:many` 回 `nil, nil`），避免呼叫端沒做防禦時產生無意義的 DB round trip
+  - 新增限制：單欄 bulk insert/upsert 被 plugin 拒絕並回傳 graceful error，因為生成的 adapter 會是對 sqlc method 的 thin pass-through，加 `@bulk` 沒有任何好處。UPDATE 不受此限制（結構上至少需要 id + value 兩欄）
+  - 鎖定既有行為：`:many` 多欄 RETURNING 的 graceful error 訊息、`INSERT ... SELECT UNNEST` 形式的 unit + e2e 雙層覆蓋，都透過強化斷言和 cross-reference 註解鎖定，防止未來 regress

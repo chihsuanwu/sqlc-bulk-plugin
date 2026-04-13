@@ -9,6 +9,9 @@ import (
 
 // BulkUpdateProductsBatch converts a slice of Product into BulkUpdateProductsParams and calls Querier.BulkUpdateProducts.
 func BulkUpdateProductsBatch(ctx context.Context, q Querier, items []Product) error {
+	if len(items) == 0 {
+		return nil
+	}
 	params := BulkUpdateProductsParams{
 		Column1: make([]int32, len(items)),
 		Column2: make([]string, len(items)),
@@ -36,6 +39,9 @@ type BulkUpdateProductPricesItem struct {
 
 // BulkUpdateProductPricesBatch converts a slice of BulkUpdateProductPricesItem into BulkUpdateProductPricesParams and calls Querier.BulkUpdateProductPrices.
 func BulkUpdateProductPricesBatch(ctx context.Context, q Querier, items []BulkUpdateProductPricesItem) error {
+	if len(items) == 0 {
+		return nil
+	}
 	params := BulkUpdateProductPricesParams{
 		Column1: make([]int32, len(items)),
 		Column2: make([]int32, len(items)),
@@ -56,6 +62,9 @@ type BulkUpdateProductNamesItem struct {
 
 // BulkUpdateProductNamesBatch converts a slice of BulkUpdateProductNamesItem into BulkUpdateProductNamesParams and calls Querier.BulkUpdateProductNames.
 func BulkUpdateProductNamesBatch(ctx context.Context, q Querier, items []BulkUpdateProductNamesItem) error {
+	if len(items) == 0 {
+		return nil
+	}
 	params := BulkUpdateProductNamesParams{
 		Ids:   make([]int32, len(items)),
 		Names: make([]string, len(items)),
